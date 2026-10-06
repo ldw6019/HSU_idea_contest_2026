@@ -1,0 +1,17 @@
+# 개인정보가 담길 수 있는 테스트 샘플
+docs/samples/
+*.har
+
+# 비밀 값
+.env
+.dev.vars
+worker/.wrangler/
+secrets*
+
+# 기타
+node_modules/
+.DS_Store
+Thumbs.db
+*.zip
+*.crx
+*.pem
