@@ -104,6 +104,10 @@
         rows.push(statusRow(r.name, r.loggedIn, detail, r.loginUrl));
       }
       console.log("[ON-Track] 연결 진단 결과", results);
+      // 판정 근거를 표로 출력 (모두 true여야 "연결됨")
+      console.table(
+        Object.fromEntries(results.map((r) => [r.name, { 최종판정: r.loggedIn, ...(r.checks || {}), 이동경로: r.finalPath, 오류: r.error }]))
+      );
     } catch (err) {
       rows.push(statusRow("백그라운드", false, "통신 실패: " + err.message));
     }
