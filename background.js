@@ -2,6 +2,10 @@
 // 화면(content script)은 다른 사이트에 직접 요청할 수 없어서,
 // 비교과 사이트·종합정보시스템 요청은 여기서 대신 보낸다.
 
+import { getOrFetch, clearAll, TTL } from "./core/cache.js";
+import { toPlainError } from "./core/errors.js";
+import { fetchTimetable } from "./adapters/info.js";
+
 const SITES = {
   hsportal: {
     name: "비교과 (스마트자기관리시스템)",
@@ -60,10 +64,26 @@ async function checkSite(key) {
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.type === "checkLogin") {
-    Promise.all(Object.keys(SITES).map(checkSite)).then(sendResponse);
-    return true; // 비동기 응답
+// 화면이 데이터를 요청하면: 캐시가 유효하면 캐시를, 아니면 어댑터로 새로 받아 준다.
+async function getTimetable({ force = false } = {}) {
+  try {
+    const r = await getOrFetch("timetable", TTL.TIMETABLE, fetchTimetable, { force });
+    return { ok: true, items: r.data, fetchedAt: r.fetchedAt, fromCache: r.fromCache, error: toPlainError(r.error) };
+  } catch (err) {
+    console.warn("[ON-Track] 시간표 불러오기 실패:", err.name, err.message);
+    return { ok: false, items: [], fetchedAt: null, error: toPlainError(err) };
   }
-  return false;
+}
+
+const HANDLERS = {
+  checkLogin: () => Promise.all(Object.keys(SITES).map(checkSite)),
+  getTimetable: (msg) => getTimetable(msg),
+  clearCache: () => clearAll(),
+};
+
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  const handler = HANDLERS[msg?.type];
+  if (!handler) return false;
+  handler(msg).then(sendResponse, (err) => sendResponse({ ok: false, error: toPlainError(err) }));
+  return true; // 비동기 응답
 });
