@@ -52,6 +52,7 @@ export function makeItem(p) {
     due: iso(p.due),
     status: p.status || STATUS.TODO,
     url: p.url || null,
+    meta: p.meta || {}, // 종류별 추가 정보 (수강률, 포인트, 정원 등)
   };
 }
 

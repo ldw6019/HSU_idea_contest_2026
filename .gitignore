@@ -15,3 +15,6 @@ Thumbs.db
 *.zip
 *.crx
 *.pem
+
+# 개인 작업 메모 (Claude 프로젝트 문서 사본, 내부 정보 포함)
+project-brief.md

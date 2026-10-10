@@ -75,7 +75,26 @@ async function getTimetable({ force = false } = {}) {
   }
 }
 
+// 화면이 다른 학교 사이트의 페이지 글을 요청할 때 대신 받아 준다.
+// 허용된 학교 주소만, GET만 받는다 (확장이 아무 사이트나 부르는 통로가 되지 않게).
+const ALLOWED_HOSTS = new Set(["hsportal.hansung.ac.kr", "info.hansung.ac.kr", "learn.hansung.ac.kr"]);
+async function fetchText({ url }) {
+  const u = new URL(url);
+  if (u.protocol !== "https:" || !ALLOWED_HOSTS.has(u.host)) throw new Error("허용되지 않은 주소");
+  const res = await fetch(u.href, { credentials: "include", cache: "no-store" });
+  const buf = await res.arrayBuffer();
+  const charset = /charset=([\w-]+)/i.exec(res.headers.get("content-type") || "")?.[1] || (u.host === "info.hansung.ac.kr" ? "euc-kr" : "utf-8");
+  let text;
+  try {
+    text = new TextDecoder(charset).decode(buf);
+  } catch {
+    text = new TextDecoder("utf-8").decode(buf);
+  }
+  return { ok: res.ok, status: res.status, finalPath: new URL(res.url).pathname, text };
+}
+
 const HANDLERS = {
+  fetchText: (msg) => fetchText(msg),
   checkLogin: () => Promise.all(Object.keys(SITES).map(checkSite)),
   getTimetable: (msg) => getTimetable(msg),
   clearCache: () => clearAll(),
