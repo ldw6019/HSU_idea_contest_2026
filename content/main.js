@@ -170,13 +170,59 @@
 
   // ---------- 캘린더 탭: 요일 × 시간 격자 ----------
   const HOUR_PX = 44; // 1시간 높이
-  // 과목별 색 (같은 과목은 항상 같은 색). 디자인 단계에서 바꿀 수 있게 여기 모아 둠
-  const PALETTE = ["#4f7cff", "#16a394", "#f08a24", "#9b5de5", "#e5484d", "#2a9d8f", "#d4a017", "#5c6ac4"];
-  const colorOf = (name) => {
-    let h = 0;
-    for (const ch of String(name)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
-    return PALETTE[h % PALETTE.length];
-  };
+  // ---------- 과목 색 토큰 ----------
+  // 색상환을 18칸으로 나눠 과목마다 한 칸씩 준다 (한 학기 최대 18과목 가정).
+  // 처음 보는 과목은 이미 쓴 색과 가장 먼 칸 중에서 무작위로 고르고, 저장해 두어 다음에도 같은 색이 나온다.
+  // 토큰: --c(진한 색: 캘린더 블록), --c-tint(은은한 배경), --c-line(테두리)
+  const COLOR_SLOTS = 18;
+  const COLOR_KEY = "ui:courseColors";
+  // 마감 임박 빨강(약 358°)과 헷갈리지 않게 빨강 근처(338°~22°)는 비우고, 나머지에 18칸을 고르게 놓는다
+  const slotHue = (slot) => Math.round(22 + (slot * 316) / (COLOR_SLOTS - 1));
+  function colorToken(slot) {
+    const h = slotHue(slot);
+    const dark = h >= 40 && h <= 170 ? 38 : 47; // 노랑·초록 계열은 흰 글자가 보이게 더 어둡게
+    return { c: `hsl(${h} 58% ${dark}%)`, tint: `hsl(${h} 70% 96.5%)`, line: `hsl(${h} 45% 86%)` };
+  }
+  // 같은 과목이 사이트마다 이름이 조금씩 다르다: 시간표 "운영체제(N)" / e클래스 "운영체제[A,N]" → 괄호 부분과 공백을 빼고 비교
+  const courseKey = (name) => String(name || "").normalize("NFC").replace(/[[(][^\])]*[\])]/g, "").replace(/\s+/g, "").toLowerCase();
+
+  let courseColors = null; // { 과목키: 칸 번호 }
+  const colorsReady = chrome.storage.local
+    .get(COLOR_KEY)
+    .then((r) => (courseColors = r[COLOR_KEY] || {}))
+    .catch(() => (courseColors = {}));
+  function pickSlot() {
+    const used = Object.values(courseColors);
+    if (!used.length) return Math.floor(Math.random() * COLOR_SLOTS);
+    const dist = (a, b) => Math.min(Math.abs(a - b), COLOR_SLOTS - Math.abs(a - b));
+    const score = (s) => Math.min(...used.map((u) => dist(s, u)));
+    const free = [...Array(COLOR_SLOTS).keys()].filter((s) => !used.includes(s));
+    const pool = free.length ? free : [...Array(COLOR_SLOTS).keys()]; // 18개를 넘으면 겹칠 수밖에 없음
+    const best = Math.max(...pool.map(score));
+    const top = pool.filter((s) => score(s) === best);
+    return top[Math.floor(Math.random() * top.length)];
+  }
+  /** 과목 이름 → 색 토큰 (색을 아직 못 불러왔으면 null) */
+  function courseColor(name) {
+    const key = courseKey(name);
+    if (!key || !courseColors) return null;
+    if (courseColors[key] == null) {
+      courseColors[key] = pickSlot();
+      chrome.storage.local.set({ [COLOR_KEY]: courseColors }).catch(() => {});
+    }
+    return colorToken(courseColors[key]);
+  }
+  /** 요소에 과목 색 토큰을 CSS 변수로 단다 */
+  function paint(node, name) {
+    const t = courseColor(name);
+    if (t) {
+      node.style.setProperty("--c", t.c);
+      node.style.setProperty("--c-tint", t.tint);
+      node.style.setProperty("--c-line", t.line);
+    }
+    return node;
+  }
+  colorsReady.then(() => rerender());
   const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
 
   function renderCalendar() {
@@ -255,7 +301,7 @@
         ]);
         block.style.top = top + "px";
         block.style.height = height - 2 + "px";
-        block.style.background = colorOf(it.course || it.title);
+        block.style.background = courseColor(it.course || it.title)?.c || "var(--ot-muted)";
         col.appendChild(block);
       }
 
@@ -278,38 +324,21 @@
     content.replaceChildren(...parts);
   }
 
-  // ---------- 이번 주 탭: 안 한 과제 · 안 들은 강의 · 이번 주/다음 주 비교과 ----------
+  // ---------- 이번 주 탭: 안 한 과제 · 안 들은 강의 ----------
   // 수업 목록은 넣지 않는다 (본인이 이미 아는 정보이고, 캘린더 탭에 있다).
+  // 신청 가능한 비교과도 넣지 않는다 (비교과 탭에서 본다). 내가 신청한 비교과(#9)는 나중에 여기 들어올 수 있음.
   // 과제·강의는 "이번 주"로 자르지 않고 남은 것을 전부 마감 순으로 보여준다.
   //  → 일요일에 "이번 주 할 일 없네" 했는데 월요일 마감이 숨어 있는 경우를 막는다.
-  // 비교과는 이번 주와 다음 주를 항상 같이 보여줘서, 주말에도 다음 주 초 마감이 보인다.
+  // 한 과목에 2개 이상이면 과목 카드 하나로 묶어 접어 둔다 (누르면 펼침).
   function renderWeek() {
     const now = new Date();
-    const { end: nextMon } = weekRange(now);
-    const thisMon = new Date(nextMon);
-    thisMon.setDate(thisMon.getDate() - 7);
-    const afterNext = new Date(nextMon);
-    afterNext.setDate(afterNext.getDate() + 7);
-    const rangeText = (a, b) => `${md(a)}–${md(new Date(b.getTime() - 1))}`;
-
-    const busy = eclassLoading || programsLoading;
-    const fetched = [eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "", programs?.fetchedAt ? `비교과 ${ago(programs.fetchedAt)}` : ""].filter(Boolean).join(" · ");
     const parts = [
       el("div", { class: "section-head" }, [
-        el("span", { class: "meta", text: busy ? "불러오는 중…" : fetched }),
-        el("button", {
-          class: "small",
-          text: "새로고침",
-          disabled: busy ? "" : null,
-          onclick: () => {
-            loadEclass({ force: true });
-            loadPrograms({ force: true });
-          },
-        }),
+        el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "" }),
+        el("button", { class: "small", text: "새로고침", disabled: eclassLoading ? "" : null, onclick: () => loadEclass({ force: true }) }),
       ]),
     ];
 
-    // e클래스: 안 한 과제, 안 들은 강의
     if (!eclass) {
       parts.push(section("안 한 과제 · 안 들은 강의", "", [placeholder("과목별 과제와 강의를 확인하고 있어요…")]));
     } else if (!eclass.ok) {
@@ -321,24 +350,48 @@
       const hasQuiz = assigns.some((it) => it.type === "quiz");
       // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
       const videos = pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now));
-      parts.push(section(hasQuiz ? "안 한 과제·퀴즈" : "안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(assigns.map(eclassRow))] : [placeholder("남은 과제가 없어요.")]));
-      parts.push(section("안 들은 강의", videos.length ? `${videos.length}개 · 마감 순` : "", videos.length ? [rows(videos.map(eclassRow))] : [placeholder("지금 들어야 할 강의가 없어요.")]));
-    }
-
-    // 비교과: 신청 마감이 이번 주 / 다음 주인 것
-    if (!programs) {
-      parts.push(section("이번 주 비교과", "", [placeholder("불러오는 중…")]));
-    } else if (!programs.ok) {
-      parts.push(section("이번 주 비교과", "", [failCard(programs.error?.message, () => loadPrograms({ force: true }))]));
-    } else {
-      if (programs.error) parts.push(el("p", { class: "stale", text: "비교과를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
-      const between = (a, b) => programs.data.filter((it) => it.due && new Date(it.due) >= now && dueDay(it.due) >= a && dueDay(it.due) < b);
-      const thisWeek = between(thisMon, nextMon);
-      const nextWeek = between(nextMon, afterNext);
-      parts.push(section("이번 주 비교과", `신청 마감 ${rangeText(thisMon, nextMon)}`, thisWeek.length ? [rows(thisWeek.map(programRow))] : [placeholder("이번 주에 신청이 마감되는 비교과는 없어요.")]));
-      parts.push(section("다음 주 비교과", `신청 마감 ${rangeText(nextMon, afterNext)}`, nextWeek.length ? [rows(nextWeek.map(programRow))] : [placeholder("다음 주에 신청이 마감되는 비교과는 없어요.")]));
+      parts.push(section(hasQuiz ? "안 한 과제·퀴즈" : "안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(grouped("a", assigns, hasQuiz ? "과제·퀴즈" : "과제"))] : [placeholder("남은 과제가 없어요.")]));
+      parts.push(section("안 들은 강의", videos.length ? `${videos.length}개 · 마감 순` : "", videos.length ? [rows(grouped("v", videos, "강의"))] : [placeholder("지금 들어야 할 강의가 없어요.")]));
     }
     content.replaceChildren(...parts);
+  }
+
+  // 과목별로 묶기: 1개면 그냥 한 줄, 2개 이상이면 접는 과목 카드. 순서는 각 과목의 가장 가까운 마감 순.
+  const openGroups = new Set(); // 펼친 카드 (다시 그려도 유지)
+  function grouped(sectionId, items, noun) {
+    const groups = new Map();
+    for (const it of items) {
+      const k = courseKey(it.course);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(it); // items가 이미 마감 순이라 각 묶음 안도 마감 순
+    }
+    return [...groups.entries()].map(([k, list]) => {
+      if (list.length === 1) return eclassRow(list[0]);
+      const id = `${sectionId}:${k}`;
+      const open = openGroups.has(id);
+      const first = list[0];
+      const card = el("div", { class: ["group", open ? "open" : "", isUrgent(first.due) ? "urgent" : ""].filter(Boolean).join(" ") }, [
+        el(
+          "button",
+          {
+            class: "group-head",
+            "aria-expanded": String(open),
+            onclick: () => {
+              open ? openGroups.delete(id) : openGroups.add(id);
+              renderWeek();
+            },
+          },
+          [
+            el("span", { class: "count", text: String(list.length) }),
+            el("div", { class: "info" }, [el("div", { class: "name", text: first.course }), el("div", { class: "sub", text: `${noun} ${list.length}개` })]),
+            el("span", { class: "due", text: dueText(first.due) }),
+            el("span", { class: "chev", text: open ? "▴" : "▾" }),
+          ]
+        ),
+        open ? el("div", { class: "group-body" }, list.map((it) => eclassRow(it, { inGroup: true }))) : null,
+      ]);
+      return paint(card, first.course);
+    });
   }
 
   // 화면 조각
@@ -444,13 +497,15 @@
   const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
 
   // e클래스 과제·강의 한 줄
-  function eclassRow(it) {
-    const extra = it.type === "video" && it.meta?.percent != null ? ` · ${it.meta.percent}% 수강` : "";
-    return el("a", { class: isUrgent(it.due) ? "todo urgent" : "todo", href: it.url, target: "_blank", rel: "noopener" }, [
+  function eclassRow(it, { inGroup = false } = {}) {
+    const pct = it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "";
+    const sub = inGroup ? pct : [it.course, pct].filter(Boolean).join(" · ");
+    const row = el("a", { class: ["todo", isUrgent(it.due) ? "urgent" : "", inGroup ? "in-group" : ""].filter(Boolean).join(" "), href: it.url, target: "_blank", rel: "noopener" }, [
       el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
-      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: `${it.course}${extra}` })]),
+      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), sub ? el("div", { class: "sub", text: sub }) : null]),
       el("span", { class: "due", text: dueText(it.due) }),
     ]);
+    return inGroup ? row : paint(row, it.course);
   }
 
   // 비교과 한 줄
