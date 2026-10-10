@@ -151,45 +151,55 @@ header strong { font-size: 16px; }
 .tt-now::before { content: ""; position: absolute; left: -3px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--ot-ng); }
 
 /* M2: 마감 임박 목록 (과제·영상·비교과) */
-.block { margin-bottom: 14px; }
-.todos { display: flex; flex-direction: column; gap: 6px; }
-.todo {
-  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
-  border: 1px solid var(--ot-line); border-radius: 10px; text-decoration: none; color: inherit;
+.block { margin-bottom: 16px; }
+.todos { display: flex; flex-direction: column; gap: 8px; }
+
+/* 카드: 흰 바탕 + 얇은 테두리. 마감 임박(이틀 이내)이면 왼쪽에 빨간 줄 (돋부기 방식). 과목 색은 캘린더에만 쓴다 */
+.todo, .group {
+  position: relative; background: #fff; border: 1px solid var(--ot-line); border-radius: 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); overflow: hidden;
 }
-.todo:hover { filter: brightness(0.98); }
-.todo.full { opacity: 0.6; }
+.todo {
+  display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  text-decoration: none; color: inherit; transition: border-color 0.15s, box-shadow 0.15s;
+}
+.todo:hover { border-color: #d3d8e2; box-shadow: 0 2px 8px rgba(16, 24, 40, 0.07); }
+.todo.urgent::before, .group.urgent::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--ot-ng);
+}
+.todo.full { opacity: 0.55; }
 .todo .info { flex: 1; min-width: 0; }
 .todo .name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .todo .sub { color: var(--ot-sub); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.todo .due { flex: none; font-size: 12px; font-weight: 600; color: var(--ot-sub); text-align: right; }
-/* 마감 임박(이틀 이내) */
-/* 과목 색 토큰(--c, --c-tint, --c-line)은 main.js의 paint()가 요소마다 넣는다. 없으면 기본 색 */
-.todo { background: var(--c-tint, #fff); border-color: var(--c-line, var(--ot-line)); }
-.todo.urgent, .group.urgent { border-color: #f0a3a6; box-shadow: inset 3px 0 0 var(--ot-ng); }
+.todo .due, .group-head .due {
+  flex: none; font-size: 12px; font-weight: 600; color: var(--ot-sub); text-align: right; font-variant-numeric: tabular-nums;
+}
 .todo.urgent .due, .group.urgent > .group-head .due { color: var(--ot-ng); }
 
 /* 한 과목에 여러 개 → 접는 과목 카드 */
-.group { border: 1px solid var(--c-line, var(--ot-line)); border-radius: 10px; background: var(--c-tint, #fff); overflow: hidden; }
 .group-head {
-  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px;
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px;
   border: none; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer;
 }
-.group-head:hover { filter: brightness(0.98); }
+.group-head:hover { background: var(--ot-soft); }
 .group-head .count {
-  flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px; box-sizing: border-box;
+  flex: none; min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;
   display: inline-flex; align-items: center; justify-content: center;
-  background: var(--c, var(--ot-muted)); color: #fff; font-size: 12px; font-weight: 700;
+  background: var(--ot-today-bg); color: var(--ot-primary); font-size: 12px; font-weight: 700;
 }
 .group-head .info { flex: 1; min-width: 0; }
 .group-head .name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .group-head .sub { color: var(--ot-sub); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.group-head .due { flex: none; font-size: 12px; font-weight: 600; color: var(--ot-sub); text-align: right; }
-.group-head .chev { flex: none; color: var(--ot-sub); font-size: 12px; }
-.group-body { display: flex; flex-direction: column; gap: 4px; padding: 0 8px 8px; }
-.todo.in-group { background: #fff; box-shadow: none; }
-.badge { flex: none; font-size: 11px; font-weight: 700; padding: 2px 6px; border-radius: 6px; color: #fff; background: var(--ot-muted); }
-.badge.assignment { background: #f08a24; }
-.badge.video { background: #4f7cff; }
-.badge.quiz { background: #9b5de5; }
-.badge.program { background: #16a394; }
+.group-head .chev { flex: none; color: var(--ot-muted); font-size: 12px; transition: transform 0.15s; }
+.group.open .chev { transform: rotate(180deg); }
+.group-body { border-top: 1px solid var(--ot-line); }
+/* 묶음 안의 줄: 테두리 없이 구분선만, 과목명 아래로 들여쓰기 */
+.todo.in-group { border: none; border-radius: 0; box-shadow: none; padding: 9px 12px 9px 44px; }
+.todo.in-group + .todo.in-group { border-top: 1px solid var(--ot-soft); }
+.todo.in-group:hover { background: var(--ot-soft); }
+.todo.in-group::before { display: none; }
+.badge { flex: none; font-size: 11px; font-weight: 700; padding: 3px 7px; border-radius: 6px; background: var(--ot-soft); color: var(--ot-sub); }
+.badge.assignment { background: #fff1e3; color: #c25e00; }
+.badge.video { background: #eaf0ff; color: #2f5bd6; }
+.badge.quiz { background: #f3ebff; color: #7a3fd0; }
+.badge.program { background: #e3f6f3; color: #0e7f72; }

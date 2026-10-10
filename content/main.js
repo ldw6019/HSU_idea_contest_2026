@@ -173,7 +173,7 @@
   // ---------- 과목 색 토큰 ----------
   // 색상환을 18칸으로 나눠 과목마다 한 칸씩 준다 (한 학기 최대 18과목 가정).
   // 처음 보는 과목은 이미 쓴 색과 가장 먼 칸 중에서 무작위로 고르고, 저장해 두어 다음에도 같은 색이 나온다.
-  // 토큰: --c(진한 색: 캘린더 블록), --c-tint(은은한 배경), --c-line(테두리)
+  // 과목 색은 캘린더 블록에만 쓴다 (할 일 카드에 배경색을 넣어 봤더니 정신없어서 뺐음, 10/10)
   const COLOR_SLOTS = 18;
   const COLOR_KEY = "ui:courseColors";
   // 마감 임박 빨강(약 358°)과 헷갈리지 않게 빨강 근처(338°~22°)는 비우고, 나머지에 18칸을 고르게 놓는다
@@ -181,7 +181,7 @@
   function colorToken(slot) {
     const h = slotHue(slot);
     const dark = h >= 40 && h <= 170 ? 38 : 47; // 노랑·초록 계열은 흰 글자가 보이게 더 어둡게
-    return { c: `hsl(${h} 58% ${dark}%)`, tint: `hsl(${h} 70% 96.5%)`, line: `hsl(${h} 45% 86%)` };
+    return { c: `hsl(${h} 58% ${dark}%)` };
   }
   // 같은 과목이 사이트마다 이름이 조금씩 다르다: 시간표 "운영체제(N)" / e클래스 "운영체제[A,N]" → 괄호 부분과 공백을 빼고 비교
   const courseKey = (name) => String(name || "").normalize("NFC").replace(/[[(][^\])]*[\])]/g, "").replace(/\s+/g, "").toLowerCase();
@@ -211,16 +211,6 @@
       chrome.storage.local.set({ [COLOR_KEY]: courseColors }).catch(() => {});
     }
     return colorToken(courseColors[key]);
-  }
-  /** 요소에 과목 색 토큰을 CSS 변수로 단다 */
-  function paint(node, name) {
-    const t = courseColor(name);
-    if (t) {
-      node.style.setProperty("--c", t.c);
-      node.style.setProperty("--c-tint", t.tint);
-      node.style.setProperty("--c-line", t.line);
-    }
-    return node;
   }
   colorsReady.then(() => rerender());
   const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
@@ -330,6 +320,7 @@
   // 과제·강의는 "이번 주"로 자르지 않고 남은 것을 전부 마감 순으로 보여준다.
   //  → 일요일에 "이번 주 할 일 없네" 했는데 월요일 마감이 숨어 있는 경우를 막는다.
   // 한 과목에 2개 이상이면 과목 카드 하나로 묶어 접어 둔다 (누르면 펼침).
+  // 카드는 흰 바탕, 마감 이틀 이내만 왼쪽 빨간 줄 (돋부기 방식).
   function renderWeek() {
     const now = new Date();
     const parts = [
@@ -385,12 +376,12 @@
             el("span", { class: "count", text: String(list.length) }),
             el("div", { class: "info" }, [el("div", { class: "name", text: first.course }), el("div", { class: "sub", text: `${noun} ${list.length}개` })]),
             el("span", { class: "due", text: dueText(first.due) }),
-            el("span", { class: "chev", text: open ? "▴" : "▾" }),
+            el("span", { class: "chev", text: "▾" }),
           ]
         ),
         open ? el("div", { class: "group-body" }, list.map((it) => eclassRow(it, { inGroup: true }))) : null,
       ]);
-      return paint(card, first.course);
+      return card;
     });
   }
 
@@ -505,7 +496,7 @@
       el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), sub ? el("div", { class: "sub", text: sub }) : null]),
       el("span", { class: "due", text: dueText(it.due) }),
     ]);
-    return inGroup ? row : paint(row, it.course);
+    return row;
   }
 
   // 비교과 한 줄
