@@ -66,21 +66,16 @@ export function parseProgramList(html) {
 }
 
 const PAGE_SIZE = 12; // 목록은 한 쪽에 12개씩
-const MAX_PAGES = 5; // 학교 서버 부담을 생각해 최대 5쪽(60개)까지만
+const MAX_PAGES = 8; // 학교 서버 부담을 생각해 최대 8쪽(96개)까지만
 
-/** 목록 HTML의 "총 N개" → N (못 찾으면 null) */
+/** 목록 HTML의 "총 N개" → N (못 찾으면 null). 실제 HTML은 "총 <b>42</b>개" 형태라 태그를 지우고 찾는다 */
 export function parseTotal(html) {
-  const m = /총\s*([\d,]+)\s*개/.exec(html);
+  const m = /총\s*([\d,]+)\s*개/.exec(String(html).replace(/<[^>]+>/g, ""));
   return m ? Number(m[1].replace(/,/g, "")) : null;
 }
 
-/**
- * 1주일 안에 신청이 마감되는 비교과 (접수중).
- * 2쪽 이상이면 /ko/program/all/list/0/{쪽}?… 로 이어서 받는다 (2026-10-10 확인).
- * @param {(url: string) => Promise<string>} getText 백그라운드를 통해 페이지 글을 받아 오는 함수
- */
-export async function fetchClosingPrograms(getText, now = new Date()) {
-  const query = "status=open&period=4";
+/** 조건(query)에 맞는 목록을 여러 쪽 이어서 받는다. 2쪽부터 /ko/program/all/list/0/{쪽}?… (2026-10-10 확인) */
+async function fetchAllPages(getText, query) {
   const first = await getText(`${BASE}/ko/program/all?${query}`);
   const items = parseProgramList(first);
   const total = parseTotal(first);
@@ -89,8 +84,17 @@ export async function fetchClosingPrograms(getText, now = new Date()) {
     items.push(...parseProgramList(await getText(`${BASE}/ko/program/all/list/0/${p}?${query}`)));
   }
   const seen = new Set();
+  return items.filter((it) => !seen.has(it.id) && seen.add(it.id));
+}
+
+/**
+ * 지금 신청을 받는(접수중) 비교과 전체, 신청 마감 순.
+ * 이번 주·다음 주·1주일 안 마감 등은 화면에서 이 목록을 걸러 쓴다.
+ * @param {(url: string) => Promise<string>} getText 백그라운드를 통해 페이지 글을 받아 오는 함수
+ */
+export async function fetchOpenPrograms(getText, now = new Date()) {
+  const items = await fetchAllPages(getText, "status=open");
   return items
-    .filter((it) => !seen.has(it.id) && seen.add(it.id))
     .filter((it) => !it.due || new Date(it.due) >= now) // 이미 마감된 것 제외
-    .sort((a, b) => new Date(a.due) - new Date(b.due));
+    .sort((a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15));
 }

@@ -76,11 +76,11 @@
     ]);
   }
 
-  function failCard(message) {
+  function failCard(message, retry = () => loadWeek({ force: true })) {
     return el("div", { class: "notice warn" }, [
       el("p", { text: "불러오기에 실패했어요." }),
       el("p", { class: "sub", text: message || "" }),
-      el("button", { class: "btn ghost", text: "다시 시도", onclick: () => loadWeek({ force: true }) }),
+      el("button", { class: "btn ghost", text: "다시 시도", onclick: retry }),
     ]);
   }
 
@@ -94,9 +94,19 @@
 
   const launcher = el("button", { class: "launcher", text: "ON", title: "ON-Track 열기" });
   const panel = el("section", { class: "panel hidden", "aria-label": "ON-Track" });
+  // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
+  const wideBtn = el("button", {
+    class: "wide-toggle",
+    text: "넓게 보기",
+    onclick: () => {
+      const on = panel.classList.toggle("wide");
+      wideBtn.textContent = on ? "좁게 보기" : "넓게 보기";
+      rerender();
+    },
+  });
   const header = el("header", {}, [
     el("strong", { text: "ON-Track" }),
-    el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) }),
+    el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
   const body = el("div", { class: "body" });
@@ -170,18 +180,9 @@
   const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
 
   function renderCalendar() {
-    const wideBtn = el("button", {
-      class: "small",
-      text: panel.classList.contains("wide") ? "좁게 보기" : "넓게 보기",
-      onclick: () => {
-        panel.classList.toggle("wide");
-        renderCalendar();
-      },
-    });
     const head = el("div", { class: "section-head" }, [
       el("span", { class: "title", text: "이번 주 시간표" }),
       el("span", { class: "meta", text: loading ? "불러오는 중…" : ago(week?.fetchedAt) }),
-      wideBtn,
       el("button", { class: "small", text: "새로고침", disabled: loading ? "" : null, onclick: () => loadWeek({ force: true }) }),
     ]);
 
@@ -277,73 +278,77 @@
     content.replaceChildren(...parts);
   }
 
+  // ---------- 이번 주 탭: 안 한 과제 · 안 들은 강의 · 이번 주/다음 주 비교과 ----------
+  // 수업 목록은 넣지 않는다 (본인이 이미 아는 정보이고, 캘린더 탭에 있다).
+  // 과제·강의는 "이번 주"로 자르지 않고 남은 것을 전부 마감 순으로 보여준다.
+  //  → 일요일에 "이번 주 할 일 없네" 했는데 월요일 마감이 숨어 있는 경우를 막는다.
+  // 비교과는 이번 주와 다음 주를 항상 같이 보여줘서, 주말에도 다음 주 초 마감이 보인다.
   function renderWeek() {
-    const head = el("div", { class: "section-head" }, [
-      el("span", { class: "title", text: "이번 주 수업" }),
-      el("span", { class: "meta", text: loading ? "불러오는 중…" : ago(week?.fetchedAt) }),
-      el("button", { class: "small", text: "새로고침", disabled: loading ? "" : null, onclick: () => loadWeek({ force: true }) }),
-    ]);
-
-    if (!week) {
-      content.replaceChildren(todoBlock(), head, el("p", { class: "placeholder", text: "불러오는 중…" }));
-      return;
-    }
-    if (!week.ok) {
-      const e = week.error || {};
-      content.replaceChildren(todoBlock(), head, e.kind === "login" ? loginCard(e.site) : failCard(e.message));
-      return;
-    }
-
-    const parts = [head];
-    // 새로 받기는 실패했지만 예전 데이터가 있는 경우
-    if (week.error) {
-      parts.push(
-        el("p", { class: "stale", text: week.error.kind === "login" ? `${week.error.site} 로그인이 풀려 예전 데이터를 보여주고 있어요.` : "새로 불러오지 못해 예전 데이터를 보여주고 있어요." })
-      );
-    }
-
     const now = new Date();
-    const items = weekItems();
+    const { end: nextMon } = weekRange(now);
+    const thisMon = new Date(nextMon);
+    thisMon.setDate(thisMon.getDate() - 7);
+    const afterNext = new Date(nextMon);
+    afterNext.setDate(afterNext.getDate() + 7);
+    const rangeText = (a, b) => `${md(a)}–${md(new Date(b.getTime() - 1))}`;
 
-    if (!items.length) {
-      parts.push(el("p", { class: "placeholder", text: "이번 주 수업이 없어요." }));
-      content.replaceChildren(todoBlock(), ...parts);
-      return;
+    const busy = eclassLoading || programsLoading;
+    const fetched = [eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "", programs?.fetchedAt ? `비교과 ${ago(programs.fetchedAt)}` : ""].filter(Boolean).join(" · ");
+    const parts = [
+      el("div", { class: "section-head" }, [
+        el("span", { class: "meta", text: busy ? "불러오는 중…" : fetched }),
+        el("button", {
+          class: "small",
+          text: "새로고침",
+          disabled: busy ? "" : null,
+          onclick: () => {
+            loadEclass({ force: true });
+            loadPrograms({ force: true });
+          },
+        }),
+      ]),
+    ];
+
+    // e클래스: 안 한 과제, 안 들은 강의
+    if (!eclass) {
+      parts.push(section("안 한 과제 · 안 들은 강의", "", [placeholder("과목별 과제와 강의를 확인하고 있어요…")]));
+    } else if (!eclass.ok) {
+      parts.push(section("안 한 과제 · 안 들은 강의", "", [failCard(eclass.error?.message, () => loadEclass({ force: true }))]));
+    } else {
+      if (eclass.error) parts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      const pending = eclass.data.items.filter((it) => it.status === "todo" && (!it.due || new Date(it.due) >= now)).sort(byDue);
+      const assigns = pending.filter((it) => it.type === "assignment");
+      // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
+      const videos = pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now));
+      parts.push(section("안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(assigns.map(eclassRow))] : [placeholder("남은 과제가 없어요.")]));
+      parts.push(section("안 들은 강의", videos.length ? `${videos.length}개 · 마감 순` : "", videos.length ? [rows(videos.map(eclassRow))] : [placeholder("지금 들어야 할 강의가 없어요.")]));
     }
 
-    // 요일별로 묶기
-    const days = new Map();
-    for (const it of items) {
-      const d = new Date(it.start);
-      const key = d.toDateString();
-      if (!days.has(key)) days.set(key, { date: d, items: [] });
-      days.get(key).items.push(it);
+    // 비교과: 신청 마감이 이번 주 / 다음 주인 것
+    if (!programs) {
+      parts.push(section("이번 주 비교과", "", [placeholder("불러오는 중…")]));
+    } else if (!programs.ok) {
+      parts.push(section("이번 주 비교과", "", [failCard(programs.error?.message, () => loadPrograms({ force: true }))]));
+    } else {
+      if (programs.error) parts.push(el("p", { class: "stale", text: "비교과를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      const between = (a, b) => programs.data.filter((it) => it.due && new Date(it.due) >= now && dueDay(it.due) >= a && dueDay(it.due) < b);
+      const thisWeek = between(thisMon, nextMon);
+      const nextWeek = between(nextMon, afterNext);
+      parts.push(section("이번 주 비교과", `신청 마감 ${rangeText(thisMon, nextMon)}`, thisWeek.length ? [rows(thisWeek.map(programRow))] : [placeholder("이번 주에 신청이 마감되는 비교과는 없어요.")]));
+      parts.push(section("다음 주 비교과", `신청 마감 ${rangeText(nextMon, afterNext)}`, nextWeek.length ? [rows(nextWeek.map(programRow))] : [placeholder("다음 주에 신청이 마감되는 비교과는 없어요.")]));
     }
-
-    const list = el("div", { class: "days" });
-    for (const { date, items: dayItems } of days.values()) {
-      const isToday = sameDay(date, now);
-      const dayEl = el("div", { class: isToday ? "day today" : "day" }, [
-        el("div", { class: "day-label", text: `${DAY[date.getDay()]} ${md(date)}${isToday ? " · 오늘" : ""}` }),
-      ]);
-      for (const it of dayItems) {
-        const s = new Date(it.start);
-        const e = new Date(it.end || it.start);
-        const past = e < now;
-        const sub = [it.place, it.professor].filter(Boolean).join(" · ");
-        dayEl.appendChild(
-          el("div", { class: past ? "item past" : "item" }, [
-            el("span", { class: "time", text: `${hm(s)}–${hm(e)}` }),
-            el("div", { class: "info" }, [el("div", { class: "name", text: it.course || it.title }), sub ? el("div", { class: "sub", text: sub }) : null]),
-          ])
-        );
-      }
-      list.appendChild(dayEl);
-    }
-    parts.push(list);
-    content.replaceChildren(todoBlock(), ...parts);
+    content.replaceChildren(...parts);
   }
 
+  // 화면 조각
+  const placeholder = (text) => el("p", { class: "placeholder", text });
+  const rows = (children) => el("div", { class: "todos" }, children);
+  function section(title, note, children) {
+    return el("div", { class: "block" }, [
+      el("div", { class: "section-head" }, [el("span", { class: "title", text: title }), el("span", { class: "meta", text: note || "" })]),
+      ...children,
+    ]);
+  }
 
   // ================================================================ M2: e클래스 과제·영상, 비교과
   // 공용 모듈(공통 형식, 캐시, 어댑터)을 동적으로 불러온다 (content script는 import문을 못 씀)
@@ -388,9 +393,9 @@
     rerender();
     try {
       const { cache, hsportal } = await mods;
-      const r = await cache.getOrFetch("programs-closing", cache.TTL.PROGRAMS, () => hsportal.fetchClosingPrograms(getText), { force });
+      const r = await cache.getOrFetch("programs-open", cache.TTL.PROGRAMS, () => hsportal.fetchOpenPrograms(getText), { force });
       programs = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
-      logItems("마감 임박 비교과", r.data);
+      logItems("접수중 비교과", r.data);
     } catch (err) {
       console.warn("[ON-Track] 비교과 불러오기 실패:", err);
       programs = { ok: false, error: plainErr(err) };
@@ -412,58 +417,46 @@
   }
 
   const TYPE_LABEL = { assignment: "과제", video: "영상", program: "비교과" };
+  // 00:00(:59) 마감은 사실상 "전날 밤 12시"다. 10/13 00:00으로 보이면 13일 하루가 더 있는 줄 알기 쉬워서
+  // 전날 24:00으로 보여주고, D-day와 이번 주/다음 주 구분도 전날 기준으로 한다.
+  const isMidnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
+  function dueDay(iso) {
+    const d = new Date(iso);
+    return isMidnight(d) ? new Date(d.getTime() - 60 * 1000) : d;
+  }
   function dueText(iso) {
     if (!iso) return "기한 없음";
     const d = new Date(iso);
+    const e = dueDay(iso);
     // 시각 차이가 아니라 "날짜" 차이로 센다 (10/10 오후에 10/12 마감 → D-2)
     const day0 = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const days = Math.round((day0(d) - day0(new Date())) / 86400000);
+    const days = Math.round((day0(e) - day0(new Date())) / 86400000);
     const dd = days <= 0 ? "오늘" : `D-${days}`;
-    return `${dd} · ${md(d)} ${hm(d)}`;
+    return `${dd} · ${md(e)} ${isMidnight(d) ? "24:00" : hm(d)}`;
   }
 
-  // ---------- 이번 주 탭 위쪽: 마감 임박 할 일 (과제·영상) ----------
-  function todoBlock() {
-    const box = el("div", { class: "block" });
-    const head = el("div", { class: "section-head" }, [
-      el("span", { class: "title", text: "7일 안에 마감" }),
-      el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : ago(eclass?.fetchedAt) }),
-      el("button", { class: "small", text: "새로고침", disabled: eclassLoading ? "" : null, onclick: () => loadEclass({ force: true }) }),
+  const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
+
+  // e클래스 과제·강의 한 줄
+  function eclassRow(it) {
+    const extra = it.type === "video" && it.meta?.percent != null ? ` · ${it.meta.percent}% 수강` : "";
+    return el("a", { class: "todo", href: it.url, target: "_blank", rel: "noopener" }, [
+      el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
+      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: `${it.course}${extra}` })]),
+      el("span", { class: "due", text: dueText(it.due) }),
     ]);
-    box.appendChild(head);
-    if (!eclass) {
-      box.appendChild(el("p", { class: "placeholder", text: "과목별 과제와 영상을 확인하고 있어요…" }));
-      return box;
-    }
-    if (!eclass.ok) {
-      box.appendChild(failCard(eclass.error?.message));
-      return box;
-    }
-    if (eclass.error) box.appendChild(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+  }
 
-    const now = Date.now();
-    const limit = now + 7 * 86400000;
-    const todo = eclass.data.items
-      .filter((it) => it.status === "todo" && it.due && new Date(it.due).getTime() >= now && new Date(it.due).getTime() <= limit)
-      .sort((a, b) => new Date(a.due) - new Date(b.due));
-
-    if (!todo.length) {
-      box.appendChild(el("p", { class: "placeholder", text: "7일 안에 마감되는 과제·영상이 없어요." }));
-      return box;
-    }
-    const list = el("div", { class: "todos" });
-    for (const it of todo) {
-      const extra = it.type === "video" && it.meta?.percent != null ? ` · ${it.meta.percent}% 수강` : "";
-      list.appendChild(
-        el("a", { class: "todo", href: it.url, target: "_blank", rel: "noopener" }, [
-          el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
-          el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: `${it.course}${extra}` })]),
-          el("span", { class: "due", text: dueText(it.due) }),
-        ])
-      );
-    }
-    box.appendChild(list);
-    return box;
+  // 비교과 한 줄
+  function programRow(it) {
+    const m = it.meta || {};
+    const seats = m.capacity ? `${m.applied ?? "?"}/${m.capacity}명${m.full ? " · 정원 마감" : ""}` : m.applied != null ? `${m.applied}명 신청` : "";
+    const runAt = it.start ? `운영 ${md(new Date(it.start))}` : "";
+    return el("a", { class: m.full ? "todo full" : "todo", href: it.url, target: "_blank", rel: "noopener" }, [
+      el("span", { class: "badge program", text: m.point ? `${m.point}p` : "비교과" }),
+      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [m.department, runAt, seats].filter(Boolean).join(" · ") })]),
+      el("span", { class: "due", text: `신청 ${dueText(it.due)}` }),
+    ]);
   }
 
   // ---------- 비교과 탭: 1주일 안에 신청 마감 ----------
@@ -481,23 +474,12 @@
       content.replaceChildren(head, failCard(programs.error?.message));
       return;
     }
+    const now = Date.now();
+    const soon = programs.data.filter((it) => it.due && new Date(it.due).getTime() >= now && new Date(it.due).getTime() <= now + 7 * 86400000);
     const parts = [head];
     if (programs.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
-    if (!programs.data.length) parts.push(el("p", { class: "placeholder", text: "1주일 안에 신청이 마감되는 비교과가 없어요." }));
-    const list = el("div", { class: "todos" });
-    for (const it of programs.data) {
-      const m = it.meta || {};
-      const seats = m.capacity ? `${m.applied ?? "?"}/${m.capacity}명${m.full ? " · 정원 마감" : ""}` : m.applied != null ? `${m.applied}명 신청` : "";
-      const runAt = it.start ? `운영 ${md(new Date(it.start))}` : "";
-      list.appendChild(
-        el("a", { class: m.full ? "todo full" : "todo", href: it.url, target: "_blank", rel: "noopener" }, [
-          el("span", { class: "badge program", text: m.point ? `${m.point}p` : "비교과" }),
-          el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [m.department, runAt, seats].filter(Boolean).join(" · ") })]),
-          el("span", { class: "due", text: `신청 ${dueText(it.due)}` }),
-        ])
-      );
-    }
-    parts.push(list);
+    if (!soon.length) parts.push(placeholder("1주일 안에 신청이 마감되는 비교과가 없어요."));
+    else parts.push(rows(soon.map(programRow)));
     content.replaceChildren(...parts);
   }
 

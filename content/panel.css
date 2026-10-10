@@ -50,6 +50,13 @@ header {
 }
 header strong { font-size: 16px; }
 .close { border: none; background: transparent; color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+.head-actions { display: flex; align-items: center; gap: 10px; }
+/* 넓게 보기: 파란 머리줄 위의 작은 라벨 버튼 */
+.wide-toggle {
+  border: 1px solid rgba(255, 255, 255, 0.55); background: rgba(255, 255, 255, 0.14); color: #fff;
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer;
+}
+.wide-toggle:hover { background: rgba(255, 255, 255, 0.26); }
 
 .tabs { display: flex; border-bottom: 1px solid var(--ot-line); }
 .tab {
@@ -110,7 +117,7 @@ header strong { font-size: 16px; }
 .status a { font-size: 12px; color: var(--ot-primary); }
 .status .loading { color: var(--ot-muted); }
 
-/* 넓게 보기 (캘린더용) */
+/* 넓게 보기 (머리줄 버튼, 모든 탭) */
 .panel.wide { width: 680px; }
 
 /* 캘린더: 요일 × 시간 격자 */
