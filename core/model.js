@@ -11,6 +11,7 @@ export const SOURCE = Object.freeze({
 export const TYPE = Object.freeze({
   CLASS: "class", // 수업 (시간표)
   ASSIGNMENT: "assignment", // 과제
+  QUIZ: "quiz", // 퀴즈
   VIDEO: "video", // 강의 영상
   PROGRAM: "program", // 비교과 프로그램
 });

@@ -317,10 +317,11 @@
     } else {
       if (eclass.error) parts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
       const pending = eclass.data.items.filter((it) => it.status === "todo" && (!it.due || new Date(it.due) >= now)).sort(byDue);
-      const assigns = pending.filter((it) => it.type === "assignment");
+      const assigns = pending.filter((it) => it.type === "assignment" || it.type === "quiz");
+      const hasQuiz = assigns.some((it) => it.type === "quiz");
       // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
       const videos = pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now));
-      parts.push(section("안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(assigns.map(eclassRow))] : [placeholder("남은 과제가 없어요.")]));
+      parts.push(section(hasQuiz ? "안 한 과제·퀴즈" : "안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(assigns.map(eclassRow))] : [placeholder("남은 과제가 없어요.")]));
       parts.push(section("안 들은 강의", videos.length ? `${videos.length}개 · 마감 순` : "", videos.length ? [rows(videos.map(eclassRow))] : [placeholder("지금 들어야 할 강의가 없어요.")]));
     }
 
@@ -416,7 +417,7 @@
     console.table(items.map((it) => ({ 종류: it.type, 과목: it.course, 제목: it.title, 마감: it.due, 상태: it.status, ...(it.meta?.percent != null ? { 수강률: it.meta.percent + "%" } : {}), ...(it.meta?.point != null ? { 포인트: it.meta.point } : {}) })));
   }
 
-  const TYPE_LABEL = { assignment: "과제", video: "영상", program: "비교과" };
+  const TYPE_LABEL = { assignment: "과제", quiz: "퀴즈", video: "영상", program: "비교과" };
   // 00:00(:59) 마감은 사실상 "전날 밤 12시"다. 10/13 00:00으로 보이면 13일 하루가 더 있는 줄 알기 쉬워서
   // 전날 24:00으로 보여주고, D-day와 이번 주/다음 주 구분도 전날 기준으로 한다.
   const isMidnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
@@ -424,23 +425,28 @@
     const d = new Date(iso);
     return isMidnight(d) ? new Date(d.getTime() - 60 * 1000) : d;
   }
+  // 남은 날짜 수. 시각 차이가 아니라 "날짜" 차이로 센다 (10/10 오후에 10/12 마감 → 2)
+  function daysLeft(iso) {
+    const day0 = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    return Math.round((day0(dueDay(iso)) - day0(new Date())) / 86400000);
+  }
   function dueText(iso) {
     if (!iso) return "기한 없음";
     const d = new Date(iso);
-    const e = dueDay(iso);
-    // 시각 차이가 아니라 "날짜" 차이로 센다 (10/10 오후에 10/12 마감 → D-2)
-    const day0 = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const days = Math.round((day0(e) - day0(new Date())) / 86400000);
+    const days = daysLeft(iso);
     const dd = days <= 0 ? "오늘" : `D-${days}`;
-    return `${dd} · ${md(e)} ${isMidnight(d) ? "24:00" : hm(d)}`;
+    return `${dd} · ${md(dueDay(iso))} ${isMidnight(d) ? "24:00" : hm(d)}`;
   }
+  // 마감 임박(이틀 이내: 오늘·D-1·D-2)이면 빨갛게
+  const URGENT_DAYS = 2;
+  const isUrgent = (iso) => !!iso && daysLeft(iso) <= URGENT_DAYS;
 
   const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
 
   // e클래스 과제·강의 한 줄
   function eclassRow(it) {
     const extra = it.type === "video" && it.meta?.percent != null ? ` · ${it.meta.percent}% 수강` : "";
-    return el("a", { class: "todo", href: it.url, target: "_blank", rel: "noopener" }, [
+    return el("a", { class: isUrgent(it.due) ? "todo urgent" : "todo", href: it.url, target: "_blank", rel: "noopener" }, [
       el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
       el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: `${it.course}${extra}` })]),
       el("span", { class: "due", text: dueText(it.due) }),
@@ -452,7 +458,8 @@
     const m = it.meta || {};
     const seats = m.capacity ? `${m.applied ?? "?"}/${m.capacity}명${m.full ? " · 정원 마감" : ""}` : m.applied != null ? `${m.applied}명 신청` : "";
     const runAt = it.start ? `운영 ${md(new Date(it.start))}` : "";
-    return el("a", { class: m.full ? "todo full" : "todo", href: it.url, target: "_blank", rel: "noopener" }, [
+    const cls = ["todo", m.full ? "full" : "", isUrgent(it.due) ? "urgent" : ""].filter(Boolean).join(" ");
+    return el("a", { class: cls, href: it.url, target: "_blank", rel: "noopener" }, [
       el("span", { class: "badge program", text: m.point ? `${m.point}p` : "비교과" }),
       el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [m.department, runAt, seats].filter(Boolean).join(" · ") })]),
       el("span", { class: "due", text: `신청 ${dueText(it.due)}` }),
