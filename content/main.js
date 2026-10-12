@@ -418,7 +418,7 @@
           [
             el("span", { class: "count", text: String(list.length) }),
             el("div", { class: "info" }, [el("div", { class: "name", text: first.course }), el("div", { class: "sub", text: `${noun} ${list.length}개` })]),
-            el("span", { class: "due", text: dueText(first.due) }),
+            dueEl(first.due),
             el("span", { class: "chev", text: "▾" }),
           ]
         ),
@@ -517,6 +517,20 @@
     const day0 = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
     return Math.round((day0(dueDay(iso)) - day0(new Date())) / 86400000);
   }
+  // 오른쪽 마감 표시: 위에 D-day 칩, 아래에 요일 붙은 날짜 (글자가 한 줄로 주룩 늘어지지 않게)
+  //  오늘 = 진한 빨강 칩, D-1·D-2 = 연한 빨강 칩, 나머지 = 회색 칩
+  function dueEl(iso, prefix = "") {
+    if (!iso) return el("span", { class: "due" }, [el("span", { class: "dchip", text: "기한 없음" })]);
+    const d = new Date(iso);
+    const e = dueDay(iso);
+    const days = daysLeft(iso);
+    const chipCls = days <= 0 ? "dchip today" : days <= URGENT_DAYS ? "dchip hot" : "dchip";
+    const when = `${md(e)}(${DAY[e.getDay()]}) ${isMidnight(d) ? "24:00" : hm(d)}`;
+    return el("span", { class: "due", title: dueText(iso) }, [
+      el("span", { class: chipCls, text: days <= 0 ? "오늘" : `D-${days}` }),
+      el("span", { class: "when", text: prefix ? `${prefix} ${when}` : when }),
+    ]);
+  }
   function dueText(iso) {
     if (!iso) return "기한 없음";
     const d = new Date(iso);
@@ -537,7 +551,7 @@
     const row = el("a", { class: ["todo", isUrgent(it.due) ? "urgent" : "", inGroup ? "in-group" : ""].filter(Boolean).join(" "), href: it.url, target: "_blank", rel: "noopener" }, [
       el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
       el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), sub ? el("div", { class: "sub", text: sub }) : null]),
-      el("span", { class: "due", text: dueText(it.due) }),
+      dueEl(it.due),
     ]);
     return row;
   }
@@ -551,7 +565,7 @@
     return el("a", { class: cls, href: it.url, target: "_blank", rel: "noopener" }, [
       el("span", { class: "badge program", text: m.point ? `${m.point}p` : "비교과" }),
       el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [m.department, runAt, seats].filter(Boolean).join(" · ") })]),
-      el("span", { class: "due", text: `신청 ${dueText(it.due)}` }),
+      dueEl(it.due, "신청"),
     ]);
   }
 
