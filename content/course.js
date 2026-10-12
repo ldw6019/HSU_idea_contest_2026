@@ -154,9 +154,9 @@
       const left = (to - now) / 1000;
       if (need > 0) {
         if (need > left) row.appendChild(chip("hsup-solid hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
-        else row.appendChild(chip(`hsup-solid hsup-r${tier(to)}`, `${human(need)} 더 들으면 출석`));
+        else row.appendChild(chip(`hsup-solid hsup-r${tier(to)}`, `${human(need)} 더 들으면 출석!`));
       }
-      row.appendChild(chip("hsup-left", `마감까지 ${human(left)}`));
+      row.appendChild(chip("hsup-left", `마감까지 ${human(left)} 남음`));
     }
     placeRow(li, row);
   }
