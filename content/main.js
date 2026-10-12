@@ -60,6 +60,32 @@
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
+  // 확장을 새로고침(업데이트)하면, 그 전에 열려 있던 e클래스 탭의 옛 코드는 확장과 연결이 끊긴다
+  // ("Extension context invalidated"). 오류로 남기지 않고, 패널에 "페이지 새로고침" 안내만 띄운다.
+  let deadContext = false;
+  const isDeadContext = (err) => {
+    try {
+      if (!chrome.runtime?.id) return true;
+    } catch {
+      return true;
+    }
+    return /Extension context invalidated/i.test(String(err?.message || err || ""));
+  };
+  function onDeadContext() {
+    if (deadContext) return;
+    deadContext = true;
+    renderDeadNotice();
+  }
+  function renderDeadNotice() {
+    body.replaceChildren(
+      el("div", { class: "notice" }, [
+        el("p", { text: "HSU PLUS가 업데이트됐어요." }),
+        el("p", { class: "sub", text: "이 페이지를 새로고침하면 다시 동작해요." }),
+        el("button", { class: "btn", text: "페이지 새로고침", onclick: () => location.reload() }),
+      ])
+    );
+  }
+
   const LOGIN_URL = {
     종합정보시스템: "https://info.hansung.ac.kr/",
     "비교과 (스마트자기관리시스템)": "https://hsportal.hansung.ac.kr/",
@@ -157,6 +183,7 @@
   }
 
   function renderBody() {
+    if (deadContext) return renderDeadNotice();
     body.replaceChildren(content, statusSection);
     if (current === "week") return renderWeek();
     if (current === "calendar") return renderCalendar();
@@ -175,6 +202,7 @@
     try {
       week = await send({ type: "getTimetable", force });
     } catch (err) {
+      if (isDeadContext(err)) return onDeadContext();
       week = { ok: false, items: [], error: { kind: "network", message: "백그라운드와 통신하지 못했어요: " + err.message } };
     }
     loading = false;
@@ -233,7 +261,9 @@
     if (!key || !courseColors) return null;
     if (courseColors[key] == null) {
       courseColors[key] = pickSlot();
-      chrome.storage.local.set({ [COLOR_KEY]: courseColors }).catch(() => {});
+      try {
+        chrome.storage.local.set({ [COLOR_KEY]: courseColors }).catch(() => {});
+      } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
     }
     return colorToken(courseColors[key]);
   }
@@ -574,6 +604,7 @@
       logItems("e클래스 과제·영상", r.data.items);
       if (r.data.failed?.length) console.warn("[HSU PLUS] 일부 과목을 읽지 못함", r.data.failed);
     } catch (err) {
+      if (isDeadContext(err)) return onDeadContext();
       console.warn("[HSU PLUS] e클래스 불러오기 실패:", err);
       eclass = { ok: false, error: plainErr(err) };
     }
@@ -592,6 +623,7 @@
       programs = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       logItems("접수중 비교과", r.data);
     } catch (err) {
+      if (isDeadContext(err)) return onDeadContext();
       console.warn("[HSU PLUS] 비교과 불러오기 실패:", err);
       programs = { ok: false, error: plainErr(err) };
     }
@@ -600,6 +632,7 @@
   }
 
   function rerender() {
+    if (deadContext) return renderDeadNotice();
     if (current === "week") renderWeek();
     else if (current === "calendar") renderCalendar();
     else if (current === "programs") renderPrograms();
@@ -755,6 +788,7 @@
         Object.fromEntries(results.map((r) => [r.name, { 최종판정: r.loggedIn, ...(r.checks || {}), 이동경로: r.finalPath, 오류: r.error }]))
       );
     } catch (err) {
+      if (isDeadContext(err)) return onDeadContext();
       rows.push(statusRow("백그라운드", false, "통신 실패: " + err.message));
     }
     statusList.replaceChildren(...rows);
