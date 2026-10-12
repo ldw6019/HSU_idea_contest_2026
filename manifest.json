@@ -24,6 +24,15 @@
         "content/main.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://learn.hansung.ac.kr/course/view.php*"
+      ],
+      "js": [
+        "content/course.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

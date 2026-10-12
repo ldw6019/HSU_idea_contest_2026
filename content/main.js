@@ -6,31 +6,7 @@
   // 메인 화면(강좌 전체보기)에서만 동작
   const isMainPage = document.body?.id === "page-site-index";
 
-  // 과목 페이지에서: 패널의 강의 카드를 눌러 들어오면 주소 끝에 #hsuplus-module-번호 가 붙어 있다.
-  // 그 강의로 스크롤하고 잠깐 강조한다. 과목 페이지 맨 위 "이번 주" 칸에도 같은 강의가 한 번 더 있어서
-  // (같은 id 중복) 주차 목록 쪽(.total_sections)에 있는 것을 고른다.
-  if (!isMainPage) {
-    const m = /^#hsuplus-module-(\d+)$/.exec(location.hash);
-    if (m) {
-      const all = [...document.querySelectorAll(`li[id="module-${m[1]}"]`)];
-      const target = all.find((li) => li.closest(".total_sections")) || all[all.length - 1];
-      if (target) {
-        history.replaceState(null, "", location.pathname + location.search); // 주소 끝 표시는 지운다
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-        const prev = { outline: target.style.outline, background: target.style.background, transition: target.style.transition };
-        target.style.transition = "background 0.6s, outline-color 0.6s";
-        target.style.outline = "3px solid #0b4ea2";
-        target.style.outlineOffset = "4px";
-        target.style.background = "#eef4ff";
-        setTimeout(() => {
-          target.style.outline = prev.outline;
-          target.style.background = prev.background;
-          setTimeout(() => (target.style.transition = prev.transition), 700);
-        }, 2200);
-      }
-    }
-    return;
-  }
+  if (!isMainPage) return; // 과목 페이지 꾸미기·강의 위치로 이동은 content/course.js
   if (document.getElementById("on-track-root")) return; // 중복 실행 방지
 
   // ---------- 화면 뼈대 (Shadow DOM: e클래스 CSS와 서로 간섭하지 않게) ----------

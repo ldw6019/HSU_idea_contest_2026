@@ -38,7 +38,7 @@ export function parseDuration(s) {
 }
 
 /** 제목 비교용: 공백·기호 제거 */
-const norm = (s) => String(s || "").replace(/[\s ·.\-_()[\]]/g, "").toLowerCase();
+export const norm = (s) => String(s || "").replace(/[\s ·.\-_()[\]]/g, "").toLowerCase();
 
 // ---------------------------------------------------------------- 수강 과목
 
@@ -110,7 +110,7 @@ export function parseAssignments(doc) {
       const statusText = text(tr.querySelector("td.c3"));
       return {
         name: text(a),
-        url: new URL(a.getAttribute("href"), BASE).href,
+        url: new URL(a.getAttribute("href"), `${BASE}/mod/assign/`).href, // 짧은 주소(view.php?id=)도 올바르게
         due: parseDate(text(tr.querySelector("td.c2"))),
         submitted: /제출\s*완료/.test(statusText),
         statusText,

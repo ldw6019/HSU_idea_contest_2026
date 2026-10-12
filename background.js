@@ -70,7 +70,9 @@ async function getTimetable({ force = false } = {}) {
     const r = await getOrFetch("timetable", TTL.TIMETABLE, fetchTimetable, { force });
     return { ok: true, items: r.data, fetchedAt: r.fetchedAt, fromCache: r.fromCache, error: toPlainError(r.error) };
   } catch (err) {
-    console.warn("[HSU PLUS] 시간표 불러오기 실패:", err.name, err.message);
+    // 로그인 안 된 건 정상 상황(패널이 "로그인 필요" 안내를 띄움) → 경고로 남기지 않는다.
+    // 경고는 크롬 확장 관리 화면의 "오류" 목록에 쌓이므로 진짜 실패만 남긴다.
+    if (err.name !== "LoginRequiredError") console.warn("[HSU PLUS] 시간표 불러오기 실패:", err.name, err.message);
     return { ok: false, items: [], fetchedAt: null, error: toPlainError(err) };
   }
 }
