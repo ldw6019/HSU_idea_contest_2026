@@ -5,7 +5,32 @@
 (() => {
   // 메인 화면(강좌 전체보기)에서만 동작
   const isMainPage = document.body?.id === "page-site-index";
-  if (!isMainPage) return;
+
+  // 과목 페이지에서: 패널의 강의 카드를 눌러 들어오면 주소 끝에 #hsuplus-module-번호 가 붙어 있다.
+  // 그 강의로 스크롤하고 잠깐 강조한다. 과목 페이지 맨 위 "이번 주" 칸에도 같은 강의가 한 번 더 있어서
+  // (같은 id 중복) 주차 목록 쪽(.total_sections)에 있는 것을 고른다.
+  if (!isMainPage) {
+    const m = /^#hsuplus-module-(\d+)$/.exec(location.hash);
+    if (m) {
+      const all = [...document.querySelectorAll(`li[id="module-${m[1]}"]`)];
+      const target = all.find((li) => li.closest(".total_sections")) || all[all.length - 1];
+      if (target) {
+        history.replaceState(null, "", location.pathname + location.search); // 주소 끝 표시는 지운다
+        target.scrollIntoView({ behavior: "smooth", block: "center" });
+        const prev = { outline: target.style.outline, background: target.style.background, transition: target.style.transition };
+        target.style.transition = "background 0.6s, outline-color 0.6s";
+        target.style.outline = "3px solid #0b4ea2";
+        target.style.outlineOffset = "4px";
+        target.style.background = "#eef4ff";
+        setTimeout(() => {
+          target.style.outline = prev.outline;
+          target.style.background = prev.background;
+          setTimeout(() => (target.style.transition = prev.transition), 700);
+        }, 2200);
+      }
+    }
+    return;
+  }
   if (document.getElementById("on-track-root")) return; // 중복 실행 방지
 
   // ---------- 화면 뼈대 (Shadow DOM: e클래스 CSS와 서로 간섭하지 않게) ----------
@@ -434,10 +459,16 @@
 
   const pctText = (it) => (it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
 
+  // 강의는 강의 화면 대신 강의실(과목 페이지)의 그 강의 위치로 보낸다 (예전 캐시엔 courseId가 없으면 원래 주소)
+  const openUrl = (it) =>
+    it.type === "video" && it.meta?.courseId && it.meta?.cmid
+      ? `https://learn.hansung.ac.kr/course/view.php?id=${it.meta.courseId}#hsuplus-module-${it.meta.cmid}`
+      : it.url;
+
   function taskCard(it) {
     const doomed = absenceCertain(it);
-    const tip = doomed ? "출석 기준을 영상 길이의 90%, 1배속으로 계산했어요 (학교 공식 기준은 아님)." : null;
-    return el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: it.url, target: "_blank", rel: "noopener", title: tip }, [
+    const tip = doomed ? `출석 인정 기준(영상 길이의 90%, ${mmss(ATTEND_RATIO * it.meta.lengthSec)})까지 남은 시간으로 계산했어요.` : null;
+    return el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: openUrl(it), target: "_blank", rel: "noopener", title: tip }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [
           el("div", { class: "tc-title", text: it.title }),
@@ -457,7 +488,7 @@
   // 묶음 카드 안의 한 줄 (제목 + 오른쪽 D-day 칩·날짜)
   function subItem(it) {
     const doomed = absenceCertain(it);
-    return el("a", { class: doomed ? "sub-item doomed" : "sub-item", href: it.url, target: "_blank", rel: "noopener" }, [
+    return el("a", { class: doomed ? "sub-item doomed" : "sub-item", href: openUrl(it), target: "_blank", rel: "noopener" }, [
       el("div", { class: "info" }, [
         el("div", { class: "name", text: it.title }),
         pctText(it) ? el("div", { class: "sub", text: pctText(it) }) : null,
@@ -632,9 +663,9 @@
   }
 
   // 출석 어려움(결석 불가피): 지금부터 쉬지 않고 들어도 출석인정기간(강의마다의 마감) 안에 출석 기준 시간을 못 채우는 강의.
-  //  출석 기준 = 영상 길이의 90% (hsu-ecx가 표시하는 기준과 일치: 14:49 → 13:20, 35:48 → 32:13. 학교 공식 확인은 아님)
+  //  출석 기준 = 영상 길이의 90% 이상 시청 (예: 53:22 영상 → 약 48분. 사용자 확인, hsu-ecx 표시값과도 일치)
   //  강의마다 따로 판단한다 (일요일 마감이든, "수업 전에 듣고 올 것"처럼 더 이른 마감이든 그 강의 마감 기준).
-  //  배속 재생이 학습시간에 더 많이 잡히는지는 확인 못 함 → 1배속 기준.
+  //  남은 시간만큼 실제로 재생해야 채워지므로(건너뛰기 불가) 남은 필요 시간과 마감까지 남은 시간을 그대로 비교한다.
   const ATTEND_RATIO = 0.9;
   function absenceCertain(it, now = Date.now()) {
     if (it.type !== "video" || !it.due || !it.meta?.lengthSec) return false;

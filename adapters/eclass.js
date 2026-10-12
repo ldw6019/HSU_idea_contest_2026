@@ -179,7 +179,8 @@ export async function fetchCourseItems(course, now = new Date()) {
       due: v.to,
       status: videoStatus(v, p, now),
       url: v.url,
-      meta: { lengthSec: v.lengthSec, learnedSec: p?.learnedSec ?? null, percent: ratio, attended: !!p?.attended },
+      // courseId·cmid: 패널에서 누르면 강의실(과목 페이지)의 그 강의 위치로 보내기 위해
+      meta: { lengthSec: v.lengthSec, learnedSec: p?.learnedSec ?? null, percent: ratio, attended: !!p?.attended, courseId: course.id, cmid: v.cmid },
     });
   });
 
