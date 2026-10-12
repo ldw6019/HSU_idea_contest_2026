@@ -314,37 +314,80 @@
     content.replaceChildren(...parts);
   }
 
-  // ---------- 이번 주 탭: 안 한 과제 · 안 들은 강의 ----------
+  // ---------- 이번 주 탭: 액자 하나 + 위쪽 선택(강의 / 과제 / 퀴즈) ----------
   // 수업 목록은 넣지 않는다 (본인이 이미 아는 정보이고, 캘린더 탭에 있다).
   // 신청 가능한 비교과도 넣지 않는다 (비교과 탭에서 본다). 내가 신청한 비교과(#9)는 나중에 여기 들어올 수 있음.
-  // 과제·강의는 "이번 주"로 자르지 않고 남은 것을 전부 마감 순으로 보여준다.
+  // 남은 것을 "이번 주"로 자르지 않고 전부 마감 순으로 보여준다.
   //  → 일요일에 "이번 주 할 일 없네" 했는데 월요일 마감이 숨어 있는 경우를 막는다.
-  // 한 과목에 2개 이상이면 과목 카드 하나로 묶어 접어 둔다 (누르면 펼침).
-  // 카드는 흰 바탕, 마감 이틀 이내만 왼쪽 빨간 줄 (돋부기 방식).
+  // 전부 늘어놓으면 길어서, 액자 위쪽에서 강의·과제·퀴즈 중 하나를 골라 본다.
+  // 각 종류에 마감 이틀 이내가 하나라도 있으면 그 이름 옆에 빨간 점.
+  // 한 과목에 2개 이상이면 과목 줄 하나로 묶어 접어 둔다 (누르면 펼침).
+  // 줄은 흰 바탕, 마감 이틀 이내만 왼쪽 빨간 줄 (돋부기 방식).
+  const KINDS = [
+    { id: "video", label: "강의", empty: "지금 들어야 할 강의가 없어요." },
+    { id: "assignment", label: "과제", empty: "남은 과제가 없어요." },
+    { id: "quiz", label: "퀴즈", empty: "남은 퀴즈가 없어요." },
+  ];
+  let weekKind = "video"; // 지금 고른 칸 (다시 그려도 유지)
+
   function renderWeek() {
     const now = new Date();
-    const parts = [
-      el("div", { class: "section-head" }, [
-        el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "" }),
-        el("button", { class: "small", text: "새로고침", disabled: eclassLoading ? "" : null, onclick: () => loadEclass({ force: true }) }),
-      ]),
-    ];
+    const head = el("div", { class: "section-head" }, [
+      el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "" }),
+      el("button", { class: "small", text: "새로고침", disabled: eclassLoading ? "" : null, onclick: () => loadEclass({ force: true }) }),
+    ]);
 
-    if (!eclass) {
-      parts.push(section("안 한 과제 · 안 들은 강의", "", [placeholder("과목별 과제와 강의를 확인하고 있어요…")]));
-    } else if (!eclass.ok) {
-      parts.push(section("안 한 과제 · 안 들은 강의", "", [failCard(eclass.error?.message, () => loadEclass({ force: true }))]));
-    } else {
-      if (eclass.error) parts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+    // 종류별 남은 항목
+    let lists = null;
+    if (eclass?.ok) {
       const pending = eclass.data.items.filter((it) => it.status === "todo" && (!it.due || new Date(it.due) >= now)).sort(byDue);
-      const assigns = pending.filter((it) => it.type === "assignment" || it.type === "quiz");
-      const hasQuiz = assigns.some((it) => it.type === "quiz");
-      // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
-      const videos = pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now));
-      parts.push(section(hasQuiz ? "안 한 과제·퀴즈" : "안 한 과제", assigns.length ? `${assigns.length}개 · 마감 순` : "", assigns.length ? [rows(grouped("a", assigns, hasQuiz ? "과제·퀴즈" : "과제"))] : [placeholder("남은 과제가 없어요.")]));
-      parts.push(section("안 들은 강의", videos.length ? `${videos.length}개 · 마감 순` : "", videos.length ? [rows(grouped("v", videos, "강의"))] : [placeholder("지금 들어야 할 강의가 없어요.")]));
+      lists = {
+        // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
+        video: pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now)),
+        assignment: pending.filter((it) => it.type === "assignment"),
+        quiz: pending.filter((it) => it.type === "quiz"),
+      };
     }
-    content.replaceChildren(...parts);
+
+    const seg = el(
+      "div",
+      { class: "seg", role: "tablist" },
+      KINDS.map((k) => {
+        const items = lists?.[k.id] || [];
+        const hot = items.some((it) => isUrgent(it.due));
+        return el(
+          "button",
+          {
+            class: k.id === weekKind ? "seg-btn active" : "seg-btn",
+            role: "tab",
+            "aria-selected": String(k.id === weekKind),
+            title: hot ? "마감 이틀 이내 항목이 있어요" : null,
+            onclick: () => {
+              weekKind = k.id;
+              renderWeek();
+            },
+          },
+          [
+            el("span", { class: "lbl" }, [el("span", { text: k.label }), hot ? el("span", { class: "dot", "aria-label": "마감 임박" }) : null]),
+            lists ? el("span", { class: "n", text: String(items.length) }) : null,
+          ]
+        );
+      })
+    );
+
+    let bodyParts;
+    if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
+    else if (!eclass.ok) bodyParts = [failCard(eclass.error?.message, () => loadEclass({ force: true }))];
+    else {
+      const kind = KINDS.find((k) => k.id === weekKind);
+      const items = lists[weekKind];
+      bodyParts = [];
+      if (eclass.error) bodyParts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      bodyParts.push(items.length ? rows(grouped(weekKind, items, kind.label)) : placeholder(kind.empty));
+    }
+
+    const frame = el("div", { class: "frame" }, [seg, el("div", { class: "frame-body" }, bodyParts)]);
+    content.replaceChildren(head, frame);
   }
 
   // 과목별로 묶기: 1개면 그냥 한 줄, 2개 이상이면 접는 과목 카드. 순서는 각 과목의 가장 가까운 마감 순.
