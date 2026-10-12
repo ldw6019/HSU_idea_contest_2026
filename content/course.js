@@ -68,26 +68,40 @@
     const st = mk("style");
     st.id = "hsup-style";
     st.textContent = `
-      .hsup-pill { display: inline-flex; align-items: center; gap: 4px; margin: 0 8px 0 6px; padding: 1px 9px;
-        border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.7; vertical-align: middle; white-space: nowrap; }
-      .hsup-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
+      .hsup-pill { display: inline-flex; align-items: center; gap: 5px; margin: 0 8px 0 6px; padding: 2px 10px;
+        border-radius: 999px; font-size: 12.5px; font-weight: 700; line-height: 1.6; vertical-align: middle; white-space: nowrap;
+        box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
+      .hsup-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
       /* 초록은 "완료"(출석·제출 완료·응시 완료)에만 쓴다. 그래서 다른 곳에서는 초록을 쓰지 않음 */
-      .hsup-ok { background: #e3f6ea; color: #18794e; }
-      .hsup-bad { background: #fdecec; color: #c62828; }
-      .hsup-wait { background: #eef1f5; color: #5b6577; }
-      .hsup-r1 { background: #fde7e7; color: #c62828; } .hsup-r2 { background: #ffeadb; color: #c2410c; }
-      .hsup-r3 { background: #fff1d6; color: #a65f00; } .hsup-r4 { background: #fdf5d3; color: #806300; }
-      .hsup-r5 { background: #eef2f7; color: #4f5d73; }
-      .hsup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 6px 0 4px 42px; }
-      .hsup-track { position: relative; width: 320px; max-width: 48%; height: 8px; border-radius: 999px; background: #e3e7ee; overflow: hidden; }
+      .hsup-ok { background: #dcf3e5; color: #146c43; }
+      .hsup-bad { background: #fde3e3; color: #b42318; }
+      .hsup-wait { background: #e9edf3; color: #4a5568; }
+      .hsup-r1 { background: #fde3e3; color: #b42318; } .hsup-r2 { background: #ffe6d5; color: #b93c0a; }
+      .hsup-r3 { background: #ffefcc; color: #955400; } .hsup-r4 { background: #fcf1c4; color: #735900; }
+      .hsup-r5 { background: #e9edf3; color: #46536a; }
+      /* 진행 줄: 아이콘 왼쪽 끝에 맞춘다 */
+      .hsup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 6px 0 6px 0; }
+      .hsup-track { position: relative; flex: 0 1 360px; min-width: 160px; height: 14px; border-radius: 999px;
+        background: #dfe4eb; box-shadow: inset 0 1px 2px rgba(15,23,42,.12); overflow: hidden; }
       .hsup-fill { height: 100%; border-radius: inherit; background: #22a55a; }
-      .hsup-fill.hsup-f-bad { background: #b9c0cc; }
+      .hsup-fill.hsup-f-bad { background: #a9b1be; }
       .hsup-fill.hsup-f-r1 { background: #e5484d; } .hsup-fill.hsup-f-r2 { background: #f76b15; }
       .hsup-fill.hsup-f-r3 { background: #f5a623; } .hsup-fill.hsup-f-r4 { background: #e6c02a; }
       .hsup-fill.hsup-f-r5 { background: #8fa3bf; }
-      .hsup-num { font-size: 12.5px; font-weight: 600; color: #384152; font-variant-numeric: tabular-nums; }
-      .hsup-chip { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 6px; line-height: 1.7; white-space: nowrap; }
-      .hsup-chip.hsup-line { background: transparent; box-shadow: inset 0 0 0 1px currentColor; }
+      /* 퍼센트는 상태 색으로 크게, 시간은 회색으로 작게 */
+      .hsup-num { display: inline-flex; align-items: baseline; gap: 6px; color: #46536a; font-variant-numeric: tabular-nums; }
+      .hsup-pct { font-size: 15px; font-weight: 800; }
+      .hsup-pct.hsup-ok, .hsup-pct.hsup-bad, .hsup-pct[class*="hsup-r"] { background: none; box-shadow: none; }
+      .hsup-time { font-size: 12.5px; font-weight: 600; color: #5b6577; }
+      .hsup-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; padding: 2px 9px;
+        border-radius: 6px; line-height: 1.6; white-space: nowrap; }
+      /* 꽉 찬 칩: 해야 할 일(더 들을 시간)과 남은 시간 */
+      .hsup-solid.hsup-r1 { background: #e5484d; color: #fff; } .hsup-solid.hsup-r2 { background: #f76b15; color: #fff; }
+      .hsup-solid.hsup-r3 { background: #f5a623; color: #3d2600; } .hsup-solid.hsup-r4 { background: #f2cf3d; color: #3d3000; }
+      .hsup-solid.hsup-r5 { background: #8fa3bf; color: #fff; }
+      .hsup-left { background: #3b4a63; color: #fff; }
+      .hsup-left::before { content: ""; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.6px currentColor;
+        background: conic-gradient(currentColor 0 25%, transparent 0); opacity: .9; }
       .hsup-flash { transition: background .6s, outline-color .6s; outline: 3px solid #0b4ea2 !important; outline-offset: 4px; background: #eef4ff !important; }
     `;
     document.head.appendChild(st);
@@ -128,7 +142,10 @@
     fill.style.width = `${Math.min(100, (learned / required) * 100)}%`;
     track.appendChild(fill);
     const pct = Math.round((learned / required) * 1000) / 10;
-    row.append(track, mk("span", "hsup-num", `${clock(learned)} / ${clock(required)} · ${pct}%`));
+    const num = mk("span", "hsup-num");
+    const pctCls = p?.attended ? "hsup-ok" : fillCls === "hsup-f-bad" ? "hsup-bad" : fillCls ? fillCls.replace("hsup-f-", "hsup-") : "";
+    num.append(mk("span", `hsup-pct ${pctCls}`, `${pct}%`), mk("span", "hsup-time", `${clock(learned)} / ${clock(required)}`));
+    row.append(track, num);
     track.title = `출석 기준: 영상 길이(${clock(v.lengthSec)})의 90%`;
 
     // 기간 중이고 아직 출석 전이면: 더 들어야 할 시간과 마감까지 남은 시간
@@ -136,10 +153,10 @@
       const need = required - learned;
       const left = (to - now) / 1000;
       if (need > 0) {
-        if (need > left) row.appendChild(chip("hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
-        else row.appendChild(chip(`hsup-r${tier(to)}`, `${human(need)} 더 들으면 출석`));
+        if (need > left) row.appendChild(chip("hsup-solid hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
+        else row.appendChild(chip(`hsup-solid hsup-r${tier(to)}`, `${human(need)} 더 들으면 출석`));
       }
-      row.appendChild(chip("hsup-r5 hsup-line", `마감까지 ${human(left)}`));
+      row.appendChild(chip("hsup-left", `마감까지 ${human(left)}`));
     }
     placeRow(li, row);
   }
