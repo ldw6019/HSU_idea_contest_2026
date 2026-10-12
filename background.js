@@ -1,4 +1,4 @@
-// ON-Track service worker
+// HSU PLUS service worker
 // 화면(content script)은 다른 사이트에 직접 요청할 수 없어서,
 // 비교과 사이트·종합정보시스템 요청은 여기서 대신 보낸다.
 
@@ -70,7 +70,7 @@ async function getTimetable({ force = false } = {}) {
     const r = await getOrFetch("timetable", TTL.TIMETABLE, fetchTimetable, { force });
     return { ok: true, items: r.data, fetchedAt: r.fetchedAt, fromCache: r.fromCache, error: toPlainError(r.error) };
   } catch (err) {
-    console.warn("[ON-Track] 시간표 불러오기 실패:", err.name, err.message);
+    console.warn("[HSU PLUS] 시간표 불러오기 실패:", err.name, err.message);
     return { ok: false, items: [], fetchedAt: null, error: toPlainError(err) };
   }
 }

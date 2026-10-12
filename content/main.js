@@ -1,4 +1,4 @@
-// ON-Track content script (e클래스 화면 담당)
+// HSU PLUS content script (e클래스 화면 담당). 팀명은 ON-Track, 작품명은 HSU PLUS
 // e클래스 메인 화면에 패널을 띄우고, 다른 사이트 데이터는 service worker(background.js)에 요청한다.
 // 데이터를 가져오는 코드는 adapters/에, 여기는 "그리기"만 담당한다.
 
@@ -92,8 +92,8 @@
     { id: "alerts", label: "알림" },
   ];
 
-  const launcher = el("button", { class: "launcher", text: "ON", title: "ON-Track 열기" });
-  const panel = el("section", { class: "panel hidden", "aria-label": "ON-Track" });
+  const launcher = el("button", { class: "launcher", text: "+", title: "HSU PLUS 열기" });
+  const panel = el("section", { class: "panel hidden", "aria-label": "HSU PLUS" });
   // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
   const wideBtn = el("button", {
     class: "wide-toggle",
@@ -105,7 +105,7 @@
     },
   });
   const header = el("header", {}, [
-    el("strong", { text: "ON-Track" }),
+    el("strong", { text: "HSU PLUS" }),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
@@ -394,7 +394,7 @@
   //  ┃ 제목                         (2개 이상 묶음이면 과목명 + "과제 N개" + ▾)
   //  ┃ 과목명 · 수강률
   //  ┃ ⏱ [D-4] 10/16(금) 23:55            ⚠ 제출 필요     ← 연회색 아래 띠
-  // 왼쪽 라벨 색 = 마감 위험도 5단계(riskTier). 결석 불가피 강의는 찡그린 얼굴 + "결석 불가피"
+  // 왼쪽 라벨 색 = 마감 위험도 5단계(riskTier). 출석이 어려운 강의는 🚨 안내문 + 필요/남은 시간
   const SVGNS = "http://www.w3.org/2000/svg";
   const ICONS = {
     clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
@@ -429,47 +429,28 @@
   const footer = (iso, status, doomed = false) =>
     el("div", { class: "tc-foot" }, [
       dueLine(iso),
-      el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? sadFace(16) : icon("warn"), el("span", { text: status })]),
+      el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? el("span", { class: "siren", text: "🚨" }) : icon("warn"), el("span", { text: status })]),
     ]);
 
-  // 찡그린 얼굴 아이콘 (직접 만든 일반 아이콘).
-  // 학교에서 받은 공식 이미지(예: 상상부기 이모티콘)가 있으면 assets/에 넣고 SAD_IMAGE에 파일 이름을 적으면 그 이미지로 바뀐다.
-  const SAD_IMAGE = null; // 예: "assets/sad.png"
-  function sadFace(size = 22) {
-    if (SAD_IMAGE) return el("img", { class: "sad", src: chrome.runtime.getURL(SAD_IMAGE), width: size, height: size, alt: "결석 불가피" });
-    const svg = document.createElementNS(SVGNS, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", size);
-    svg.setAttribute("height", size);
-    svg.setAttribute("class", "sad");
-    svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", "결석 불가피");
-    const add = (tag, attrs) => {
-      const n = document.createElementNS(SVGNS, tag);
-      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
-      svg.appendChild(n);
-    };
-    add("circle", { cx: 12, cy: 12, r: 10.5, class: "sad-face" });
-    add("path", { d: "M7.2 8.6 9.8 9.6M16.8 8.6 14.2 9.6", class: "sad-line" }); // 찡그린 눈썹
-    add("circle", { cx: 9, cy: 11.6, r: 1.1, class: "sad-dot" });
-    add("circle", { cx: 15, cy: 11.6, r: 1.1, class: "sad-dot" });
-    add("path", { d: "M8.2 17.2q3.8-3.2 7.6 0", class: "sad-line" }); // 처진 입
-    return svg;
-  }
   const pctText = (it) => (it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
 
   function taskCard(it) {
     const doomed = absenceCertain(it);
-    const tip = doomed ? `출석 기준(영상의 90%)까지 ${mmss(ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0))} 더 들어야 하는데, 출석인정기간까지 ${mmss((new Date(it.due) - Date.now()) / 1000)} 남았어요.` : null;
+    const tip = doomed ? "출석 기준을 영상 길이의 90%, 1배속으로 계산했어요 (학교 공식 기준은 아님)." : null;
     return el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: it.url, target: "_blank", rel: "noopener", title: tip }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [
           el("div", { class: "tc-title", text: it.title }),
           el("div", { class: "tc-sub", text: [it.course, pctText(it)].filter(Boolean).join(" · ") }),
+          doomed
+            ? el("div", { class: "tc-alert" }, [
+                el("div", { class: "msg", text: "🚨 지금부터 들어도 출석 인정 시간을 채우기 어려워요" }),
+                el("div", { class: "nums", text: absenceNumbers(it) }),
+              ])
+            : null,
         ]),
-        doomed ? sadFace(28) : null,
       ]),
-      footer(it.due, doomed ? "결석 불가피" : NEED[it.type] || "확인 필요", doomed),
+      footer(it.due, doomed ? "출석 어려움" : NEED[it.type] || "확인 필요", doomed),
     ]);
   }
 
@@ -477,10 +458,10 @@
   function subItem(it) {
     const doomed = absenceCertain(it);
     return el("a", { class: doomed ? "sub-item doomed" : "sub-item", href: it.url, target: "_blank", rel: "noopener" }, [
-      doomed ? sadFace(20) : null,
       el("div", { class: "info" }, [
         el("div", { class: "name", text: it.title }),
-        pctText(it) || doomed ? el("div", { class: "sub", text: [pctText(it), doomed ? "결석 불가피" : ""].filter(Boolean).join(" · ") }) : null,
+        pctText(it) ? el("div", { class: "sub", text: pctText(it) }) : null,
+        doomed ? el("div", { class: "sub alert", text: `🚨 출석 어려움 · ${absenceNumbers(it)}` }) : null,
       ]),
       dueEl(it.due),
     ]);
@@ -518,7 +499,7 @@
           ]
         ),
         open ? el("div", { class: "tc-list" }, list.map(subItem)) : null,
-        footer(first.due, doomedN ? `결석 불가피 ${doomedN}` : `${NEED[first.type] || "확인 필요"} ${list.length}`, doomedN > 0),
+        footer(first.due, doomedN ? `출석 어려움 ${doomedN}` : `${NEED[first.type] || "확인 필요"} ${list.length}`, doomedN > 0),
       ]);
     });
   }
@@ -560,9 +541,9 @@
       const r = await cache.getOrFetch("eclass", cache.TTL.ECLASS, () => ad.fetchEclass(document), { force });
       eclass = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       logItems("e클래스 과제·영상", r.data.items);
-      if (r.data.failed?.length) console.warn("[ON-Track] 일부 과목을 읽지 못함", r.data.failed);
+      if (r.data.failed?.length) console.warn("[HSU PLUS] 일부 과목을 읽지 못함", r.data.failed);
     } catch (err) {
-      console.warn("[ON-Track] e클래스 불러오기 실패:", err);
+      console.warn("[HSU PLUS] e클래스 불러오기 실패:", err);
       eclass = { ok: false, error: plainErr(err) };
     }
     eclassLoading = false;
@@ -580,7 +561,7 @@
       programs = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       logItems("접수중 비교과", r.data);
     } catch (err) {
-      console.warn("[ON-Track] 비교과 불러오기 실패:", err);
+      console.warn("[HSU PLUS] 비교과 불러오기 실패:", err);
       programs = { ok: false, error: plainErr(err) };
     }
     programsLoading = false;
@@ -595,7 +576,7 @@
 
   // 공통 형식으로 잘 바뀌었는지 콘솔에서 확인 (M2 완료 기준)
   function logItems(label, items) {
-    console.log(`[ON-Track] ${label}: ${items.length}건`);
+    console.log(`[HSU PLUS] ${label}: ${items.length}건`);
     console.table(items.map((it) => ({ 종류: it.type, 과목: it.course, 제목: it.title, 마감: it.due, 상태: it.status, ...(it.meta?.percent != null ? { 수강률: it.meta.percent + "%" } : {}), ...(it.meta?.point != null ? { 포인트: it.meta.point } : {}) })));
   }
 
@@ -650,7 +631,7 @@
     return 5;
   }
 
-  // 결석 불가피: 지금부터 쉬지 않고 들어도 출석인정기간(강의마다의 마감) 안에 출석 기준 시간을 못 채우는 강의.
+  // 출석 어려움(결석 불가피): 지금부터 쉬지 않고 들어도 출석인정기간(강의마다의 마감) 안에 출석 기준 시간을 못 채우는 강의.
   //  출석 기준 = 영상 길이의 90% (hsu-ecx가 표시하는 기준과 일치: 14:49 → 13:20, 35:48 → 32:13. 학교 공식 확인은 아님)
   //  강의마다 따로 판단한다 (일요일 마감이든, "수업 전에 듣고 올 것"처럼 더 이른 마감이든 그 강의 마감 기준).
   //  배속 재생이 학습시간에 더 많이 잡히는지는 확인 못 함 → 1배속 기준.
@@ -660,6 +641,11 @@
     const needSec = ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0);
     const leftSec = (new Date(it.due).getTime() - now) / 1000;
     return needSec > 0 && needSec > leftSec;
+  }
+  function absenceNumbers(it, now = Date.now()) {
+    const needSec = ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0);
+    const leftSec = (new Date(it.due).getTime() - now) / 1000;
+    return `${mmss(needSec)} 더 필요 · 마감까지 ${mmss(leftSec)}`;
   }
   const mmss = (sec) => {
     sec = Math.max(0, Math.round(sec));

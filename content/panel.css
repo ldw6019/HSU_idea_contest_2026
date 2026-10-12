@@ -1,4 +1,4 @@
-/* ON-Track 패널 스타일 (Shadow DOM 안에서만 적용됨)
+/* HSU PLUS 패널 스타일 (Shadow DOM 안에서만 적용됨)
    디자인은 M5에서 다듬는다. 색·글꼴·간격은 아래 변수만 바꾸면 전체에 반영된다. */
 :host {
   all: initial;
@@ -299,11 +299,10 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 .dchip.r1, .dchip.r2, .dchip.r3, .dchip.r4, .dchip.r5 { background: var(--r-chip); color: var(--r-ink); }
 /* 칩이 카드 안에 있으면 카드 단계가 아니라 칩 자신의 단계 색을 쓴다 (위 규칙이 칩마다 변수를 다시 정함) */
 
-/* ---------- 결석 불가피 ---------- */
+/* ---------- 출석 어려움 (지금부터 들어도 출석 기준 시간을 못 채우는 강의) ---------- */
 .tc-status.doomed { color: #b42318; }
-.tcard.doomed .tc-title { color: #7a1c1c; }
-.sad { flex: none; }
-.sad-face { fill: #fde7e7; stroke: #c62828; stroke-width: 1.5; }
-.sad-dot { fill: #7a1c1c; }
-.sad-line { fill: none; stroke: #7a1c1c; stroke-width: 1.6; stroke-linecap: round; }
-.sub-item.doomed .sub { color: #b42318; }
+.tc-status .siren { font-size: 12px; line-height: 1; }
+.tc-alert { margin-top: 8px; padding: 7px 9px; border-radius: 8px; background: #fdecec; color: #8f1d1d; }
+.tc-alert .msg { font-size: 12.5px; font-weight: 700; }
+.tc-alert .nums { margin-top: 2px; font-size: 12px; color: #b42318; font-variant-numeric: tabular-nums; }
+.sub-item .sub.alert { color: #b42318; font-weight: 600; }
