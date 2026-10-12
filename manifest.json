@@ -31,7 +31,8 @@
       "resources": [
         "content/panel.css",
         "core/*.js",
-        "adapters/*.js"
+        "adapters/*.js",
+        "assets/*"
       ],
       "matches": [
         "https://learn.hansung.ac.kr/*"

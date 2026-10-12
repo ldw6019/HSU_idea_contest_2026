@@ -394,7 +394,7 @@
   //  ┃ 제목                         (2개 이상 묶음이면 과목명 + "과제 N개" + ▾)
   //  ┃ 과목명 · 수강률
   //  ┃ ⏱ [D-4] 10/16(금) 23:55            ⚠ 제출 필요     ← 연회색 아래 띠
-  // 왼쪽 라벨: 주황 = 아직 안 함(이 목록은 전부), 빨강 = 마감 이틀 이내
+  // 왼쪽 라벨 색 = 마감 위험도 5단계(riskTier). 결석 불가피 강의는 찡그린 얼굴 + "결석 불가피"
   const SVGNS = "http://www.w3.org/2000/svg";
   const ICONS = {
     clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
@@ -422,30 +422,66 @@
     const days = daysLeft(iso);
     return el("span", { class: "dline", title: dueText(iso) }, [
       icon("clock"),
-      el("span", { class: days <= 0 ? "dchip today" : days <= URGENT_DAYS ? "dchip hot" : "dchip", text: days <= 0 ? "오늘" : `D-${days}` }),
+      el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(iso)}`, text: days <= 0 ? "오늘" : `D-${days}` }),
       el("span", { class: "when", text: `${md(e)}(${DAY[e.getDay()]}) ${isMidnight(d) ? "24:00" : hm(d)}` }),
     ]);
   }
-  const footer = (iso, status) =>
-    el("div", { class: "tc-foot" }, [dueLine(iso), el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: status })])]);
+  const footer = (iso, status, doomed = false) =>
+    el("div", { class: "tc-foot" }, [
+      dueLine(iso),
+      el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? sadFace(16) : icon("warn"), el("span", { text: status })]),
+    ]);
+
+  // 찡그린 얼굴 아이콘 (직접 만든 일반 아이콘).
+  // 학교에서 받은 공식 이미지(예: 상상부기 이모티콘)가 있으면 assets/에 넣고 SAD_IMAGE에 파일 이름을 적으면 그 이미지로 바뀐다.
+  const SAD_IMAGE = null; // 예: "assets/sad.png"
+  function sadFace(size = 22) {
+    if (SAD_IMAGE) return el("img", { class: "sad", src: chrome.runtime.getURL(SAD_IMAGE), width: size, height: size, alt: "결석 불가피" });
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("class", "sad");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "결석 불가피");
+    const add = (tag, attrs) => {
+      const n = document.createElementNS(SVGNS, tag);
+      for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v);
+      svg.appendChild(n);
+    };
+    add("circle", { cx: 12, cy: 12, r: 10.5, class: "sad-face" });
+    add("path", { d: "M7.2 8.6 9.8 9.6M16.8 8.6 14.2 9.6", class: "sad-line" }); // 찡그린 눈썹
+    add("circle", { cx: 9, cy: 11.6, r: 1.1, class: "sad-dot" });
+    add("circle", { cx: 15, cy: 11.6, r: 1.1, class: "sad-dot" });
+    add("path", { d: "M8.2 17.2q3.8-3.2 7.6 0", class: "sad-line" }); // 처진 입
+    return svg;
+  }
   const pctText = (it) => (it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
 
   function taskCard(it) {
-    return el("a", { class: isUrgent(it.due) ? "tcard hot" : "tcard", href: it.url, target: "_blank", rel: "noopener" }, [
+    const doomed = absenceCertain(it);
+    const tip = doomed ? `출석 기준(영상의 90%)까지 ${mmss(ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0))} 더 들어야 하는데, 출석인정기간까지 ${mmss((new Date(it.due) - Date.now()) / 1000)} 남았어요.` : null;
+    return el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: it.url, target: "_blank", rel: "noopener", title: tip }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [
           el("div", { class: "tc-title", text: it.title }),
           el("div", { class: "tc-sub", text: [it.course, pctText(it)].filter(Boolean).join(" · ") }),
         ]),
+        doomed ? sadFace(28) : null,
       ]),
-      footer(it.due, NEED[it.type] || "확인 필요"),
+      footer(it.due, doomed ? "결석 불가피" : NEED[it.type] || "확인 필요", doomed),
     ]);
   }
 
   // 묶음 카드 안의 한 줄 (제목 + 오른쪽 D-day 칩·날짜)
   function subItem(it) {
-    return el("a", { class: isUrgent(it.due) ? "sub-item hot" : "sub-item", href: it.url, target: "_blank", rel: "noopener" }, [
-      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), pctText(it) ? el("div", { class: "sub", text: pctText(it) }) : null]),
+    const doomed = absenceCertain(it);
+    return el("a", { class: doomed ? "sub-item doomed" : "sub-item", href: it.url, target: "_blank", rel: "noopener" }, [
+      doomed ? sadFace(20) : null,
+      el("div", { class: "info" }, [
+        el("div", { class: "name", text: it.title }),
+        pctText(it) || doomed ? el("div", { class: "sub", text: [pctText(it), doomed ? "결석 불가피" : ""].filter(Boolean).join(" · ") }) : null,
+      ]),
       dueEl(it.due),
     ]);
   }
@@ -464,7 +500,8 @@
       const id = `${sectionId}:${k}`;
       const open = openGroups.has(id);
       const first = list[0];
-      return el("div", { class: ["tcard", "group", open ? "open" : "", isUrgent(first.due) ? "hot" : ""].filter(Boolean).join(" ") }, [
+      const doomedN = list.filter((it) => absenceCertain(it)).length;
+      return el("div", { class: ["tcard", "group", `r${riskTier(first.due)}`, open ? "open" : ""].filter(Boolean).join(" ") }, [
         el(
           "button",
           {
@@ -481,7 +518,7 @@
           ]
         ),
         open ? el("div", { class: "tc-list" }, list.map(subItem)) : null,
-        footer(first.due, `${NEED[first.type] || "확인 필요"} ${list.length}`),
+        footer(first.due, doomedN ? `결석 불가피 ${doomedN}` : `${NEED[first.type] || "확인 필요"} ${list.length}`, doomedN > 0),
       ]);
     });
   }
@@ -582,7 +619,7 @@
     const d = new Date(iso);
     const e = dueDay(iso);
     const days = daysLeft(iso);
-    const chipCls = days <= 0 ? "dchip today" : days <= URGENT_DAYS ? "dchip hot" : "dchip";
+    const chipCls = days <= 0 ? "dchip today" : `dchip r${riskTier(iso)}`;
     const when = `${md(e)}(${DAY[e.getDay()]}) ${isMidnight(d) ? "24:00" : hm(d)}`;
     return el("span", { class: "due", title: dueText(iso) }, [
       el("span", { class: chipCls, text: days <= 0 ? "오늘" : `D-${days}` }),
@@ -599,6 +636,36 @@
   // 마감 임박(이틀 이내: 오늘·D-1·D-2)이면 빨갛게
   const URGENT_DAYS = 2;
   const isUrgent = (iso) => !!iso && daysLeft(iso) <= URGENT_DAYS;
+
+  // 마감 위험도 5단계 → 카드 왼쪽 라벨·D-day 칩·상태 글자 색 (panel.css의 .r1~.r5)
+  //  r1 당일·1일 남음(빨강) / r2 2일(주황빨강) / r3 3~7일(주황) / r4 8~13일(노랑) / r5 14일 이상(회청색, 장기 과제)
+  //  초록은 쓰지 않는다: 안전해 보여서 "이미 제출함"으로 오해할 수 있음
+  function riskTier(iso) {
+    if (!iso) return 5;
+    const d = daysLeft(iso);
+    if (d <= 1) return 1;
+    if (d === 2) return 2;
+    if (d <= 7) return 3;
+    if (d < 14) return 4;
+    return 5;
+  }
+
+  // 결석 불가피: 지금부터 쉬지 않고 들어도 출석인정기간(강의마다의 마감) 안에 출석 기준 시간을 못 채우는 강의.
+  //  출석 기준 = 영상 길이의 90% (hsu-ecx가 표시하는 기준과 일치: 14:49 → 13:20, 35:48 → 32:13. 학교 공식 확인은 아님)
+  //  강의마다 따로 판단한다 (일요일 마감이든, "수업 전에 듣고 올 것"처럼 더 이른 마감이든 그 강의 마감 기준).
+  //  배속 재생이 학습시간에 더 많이 잡히는지는 확인 못 함 → 1배속 기준.
+  const ATTEND_RATIO = 0.9;
+  function absenceCertain(it, now = Date.now()) {
+    if (it.type !== "video" || !it.due || !it.meta?.lengthSec) return false;
+    const needSec = ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0);
+    const leftSec = (new Date(it.due).getTime() - now) / 1000;
+    return needSec > 0 && needSec > leftSec;
+  }
+  const mmss = (sec) => {
+    sec = Math.max(0, Math.round(sec));
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    return h ? `${h}시간 ${m}분` : `${m}분`;
+  };
 
   const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
 

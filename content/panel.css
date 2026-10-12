@@ -258,9 +258,8 @@ header strong { font-size: 16px; }
   box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); text-decoration: none; color: inherit; transition: box-shadow 0.15s;
 }
 a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
-/* 왼쪽 라벨: 주황 = 아직 안 함, 빨강 = 마감 이틀 이내 */
-.tcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--ot-warn); z-index: 1; }
-.tcard.hot::before { background: var(--ot-ng); }
+/* 왼쪽 라벨: 마감 위험도 5단계 (초록은 쓰지 않음 — 제출한 것으로 오해할 수 있어서) */
+.tcard::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 5px; background: var(--r-bar, var(--ot-warn)); z-index: 1; }
 .tc-main {
   display: flex; align-items: center; gap: 10px; width: 100%; padding: 11px 14px 10px 18px;
   border: none; background: transparent; color: inherit; font: inherit; text-align: left;
@@ -279,8 +278,7 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 }
 .dline { display: inline-flex; align-items: center; gap: 6px; color: var(--ot-sub); min-width: 0; }
 .dline .when { font-size: 12px; color: var(--ot-sub); white-space: nowrap; font-variant-numeric: tabular-nums; }
-.tc-status { display: inline-flex; align-items: center; gap: 4px; flex: none; font-weight: 600; color: #d98200; }
-.tcard.hot .tc-status { color: var(--ot-ng); }
+.tc-status { display: inline-flex; align-items: center; gap: 4px; flex: none; font-weight: 600; color: var(--r-ink, #b26a00); }
 .ico { width: 14px; height: 14px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* 묶음 카드 안의 줄 */
 .tc-list { border-top: 1px solid #eef0f4; }
@@ -290,3 +288,22 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 .sub-item .info { flex: 1; min-width: 0; }
 .sub-item .name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sub-item .sub { font-size: 12px; color: var(--ot-sub); margin-top: 1px; }
+
+/* ---------- 마감 위험도 5단계 색 ----------
+   r1 당일·1일 / r2 2일 / r3 3~7일 / r4 8~13일 / r5 14일 이상(장기). 초록 없음 */
+.r1 { --r-bar: #e5484d; --r-chip: #fde7e7; --r-ink: #c62828; }
+.r2 { --r-bar: #f76b15; --r-chip: #ffeadb; --r-ink: #c2410c; }
+.r3 { --r-bar: #f5a623; --r-chip: #fff1d6; --r-ink: #a65f00; }
+.r4 { --r-bar: #f2cf3d; --r-chip: #fdf5d3; --r-ink: #806300; }
+.r5 { --r-bar: #9aabc3; --r-chip: #eef2f7; --r-ink: #4f5d73; }
+.dchip.r1, .dchip.r2, .dchip.r3, .dchip.r4, .dchip.r5 { background: var(--r-chip); color: var(--r-ink); }
+/* 칩이 카드 안에 있으면 카드 단계가 아니라 칩 자신의 단계 색을 쓴다 (위 규칙이 칩마다 변수를 다시 정함) */
+
+/* ---------- 결석 불가피 ---------- */
+.tc-status.doomed { color: #b42318; }
+.tcard.doomed .tc-title { color: #7a1c1c; }
+.sad { flex: none; }
+.sad-face { fill: #fde7e7; stroke: #c62828; stroke-width: 1.5; }
+.sad-dot { fill: #7a1c1c; }
+.sad-line { fill: none; stroke: #7a1c1c; stroke-width: 1.6; stroke-linecap: round; }
+.sub-item.doomed .sub { color: #b42318; }
