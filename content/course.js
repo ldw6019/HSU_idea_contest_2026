@@ -1,6 +1,7 @@
 // HSU PLUS — 과목 페이지(강의실, /course/view.php) 꾸미기
 // e클래스 기본 화면은 강의를 다 들었는지, 과제를 냈는지 하나씩 눌러 봐야 안다.
 // 그래서 강의실 목록에 바로 보이게 덧붙인다 (기존 익텐 hsu-ecx의 기능을 참고해 우리 디자인으로).
+// 색: 초록 = 완료(출석·제출·응시)에만. 나머지는 패널과 같은 마감 위험도 색
 //  - 강의 영상: 제목 옆 상태(출석 / 결석 / 미시청·수강 중 / 열리기 전) + 아래 줄에 학습 진도 막대
 //               (학습시간 / 출석 기준 시간 = 영상 길이의 90%), 아직 기간 중이면 "더 필요한 시간"·"마감까지"
 //  - 과제: 제목 옆 제출 완료 / 미제출 + 제출 시각·마감
@@ -70,7 +71,8 @@
       .hsup-pill { display: inline-flex; align-items: center; gap: 4px; margin: 0 8px 0 6px; padding: 1px 9px;
         border-radius: 999px; font-size: 12px; font-weight: 700; line-height: 1.7; vertical-align: middle; white-space: nowrap; }
       .hsup-pill::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; opacity: .85; }
-      .hsup-ok { background: #e8f0fe; color: #0b4ea2; }
+      /* 초록은 "완료"(출석·제출 완료·응시 완료)에만 쓴다. 그래서 다른 곳에서는 초록을 쓰지 않음 */
+      .hsup-ok { background: #e3f6ea; color: #18794e; }
       .hsup-bad { background: #fdecec; color: #c62828; }
       .hsup-wait { background: #eef1f5; color: #5b6577; }
       .hsup-r1 { background: #fde7e7; color: #c62828; } .hsup-r2 { background: #ffeadb; color: #c2410c; }
@@ -78,7 +80,7 @@
       .hsup-r5 { background: #eef2f7; color: #4f5d73; }
       .hsup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 6px 0 4px 42px; }
       .hsup-track { position: relative; width: 320px; max-width: 48%; height: 8px; border-radius: 999px; background: #e3e7ee; overflow: hidden; }
-      .hsup-fill { height: 100%; border-radius: inherit; background: #0b4ea2; }
+      .hsup-fill { height: 100%; border-radius: inherit; background: #22a55a; }
       .hsup-fill.hsup-f-bad { background: #b9c0cc; }
       .hsup-fill.hsup-f-r1 { background: #e5484d; } .hsup-fill.hsup-f-r2 { background: #f76b15; }
       .hsup-fill.hsup-f-r3 { background: #f5a623; } .hsup-fill.hsup-f-r4 { background: #e6c02a; }
