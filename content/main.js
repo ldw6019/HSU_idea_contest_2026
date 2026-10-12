@@ -390,7 +390,67 @@
     content.replaceChildren(head, frame);
   }
 
-  // 과목별로 묶기: 1개면 그냥 한 줄, 2개 이상이면 접는 과목 카드. 순서는 각 과목의 가장 가까운 마감 순.
+  // ---------- 할 일 카드 (돋부기 카드 구조 참고) ----------
+  //  ┃ 제목                         (2개 이상 묶음이면 과목명 + "과제 N개" + ▾)
+  //  ┃ 과목명 · 수강률
+  //  ┃ ⏱ [D-4] 10/16(금) 23:55            ⚠ 제출 필요     ← 연회색 아래 띠
+  // 왼쪽 라벨: 주황 = 아직 안 함(이 목록은 전부), 빨강 = 마감 이틀 이내
+  const SVGNS = "http://www.w3.org/2000/svg";
+  const ICONS = {
+    clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
+    warn: ["M10.3 4 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z", "M12 9.5v4", "M12 17h.01"],
+  };
+  function icon(name) {
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("class", "ico");
+    svg.setAttribute("aria-hidden", "true");
+    for (const d of ICONS[name]) {
+      const path = document.createElementNS(SVGNS, "path");
+      path.setAttribute("d", d);
+      svg.appendChild(path);
+    }
+    return svg;
+  }
+  const NEED = { video: "수강 필요", assignment: "제출 필요", quiz: "응시 필요" };
+
+  // 아래 띠 왼쪽: 시계 + D-day 칩 + 요일 붙은 날짜 (한 줄)
+  function dueLine(iso) {
+    if (!iso) return el("span", { class: "dline" }, [icon("clock"), el("span", { class: "when", text: "기한 없음" })]);
+    const d = new Date(iso);
+    const e = dueDay(iso);
+    const days = daysLeft(iso);
+    return el("span", { class: "dline", title: dueText(iso) }, [
+      icon("clock"),
+      el("span", { class: days <= 0 ? "dchip today" : days <= URGENT_DAYS ? "dchip hot" : "dchip", text: days <= 0 ? "오늘" : `D-${days}` }),
+      el("span", { class: "when", text: `${md(e)}(${DAY[e.getDay()]}) ${isMidnight(d) ? "24:00" : hm(d)}` }),
+    ]);
+  }
+  const footer = (iso, status) =>
+    el("div", { class: "tc-foot" }, [dueLine(iso), el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: status })])]);
+  const pctText = (it) => (it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
+
+  function taskCard(it) {
+    return el("a", { class: isUrgent(it.due) ? "tcard hot" : "tcard", href: it.url, target: "_blank", rel: "noopener" }, [
+      el("div", { class: "tc-main" }, [
+        el("div", { class: "info" }, [
+          el("div", { class: "tc-title", text: it.title }),
+          el("div", { class: "tc-sub", text: [it.course, pctText(it)].filter(Boolean).join(" · ") }),
+        ]),
+      ]),
+      footer(it.due, NEED[it.type] || "확인 필요"),
+    ]);
+  }
+
+  // 묶음 카드 안의 한 줄 (제목 + 오른쪽 D-day 칩·날짜)
+  function subItem(it) {
+    return el("a", { class: isUrgent(it.due) ? "sub-item hot" : "sub-item", href: it.url, target: "_blank", rel: "noopener" }, [
+      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), pctText(it) ? el("div", { class: "sub", text: pctText(it) }) : null]),
+      dueEl(it.due),
+    ]);
+  }
+
+  // 과목별로 묶기: 1개면 카드 하나, 2개 이상이면 접는 과목 카드. 순서는 각 과목의 가장 가까운 마감 순.
   const openGroups = new Set(); // 펼친 카드 (다시 그려도 유지)
   function grouped(sectionId, items, noun) {
     const groups = new Map();
@@ -400,15 +460,15 @@
       groups.get(k).push(it); // items가 이미 마감 순이라 각 묶음 안도 마감 순
     }
     return [...groups.entries()].map(([k, list]) => {
-      if (list.length === 1) return eclassRow(list[0]);
+      if (list.length === 1) return taskCard(list[0]);
       const id = `${sectionId}:${k}`;
       const open = openGroups.has(id);
       const first = list[0];
-      const card = el("div", { class: ["group", open ? "open" : "", isUrgent(first.due) ? "urgent" : ""].filter(Boolean).join(" ") }, [
+      return el("div", { class: ["tcard", "group", open ? "open" : "", isUrgent(first.due) ? "hot" : ""].filter(Boolean).join(" ") }, [
         el(
           "button",
           {
-            class: "group-head",
+            class: "tc-main tc-toggle",
             "aria-expanded": String(open),
             onclick: () => {
               open ? openGroups.delete(id) : openGroups.add(id);
@@ -416,15 +476,13 @@
             },
           },
           [
-            el("span", { class: "count", text: String(list.length) }),
-            el("div", { class: "info" }, [el("div", { class: "name", text: first.course }), el("div", { class: "sub", text: `${noun} ${list.length}개` })]),
-            dueEl(first.due),
+            el("div", { class: "info" }, [el("div", { class: "tc-title", text: first.course }), el("div", { class: "tc-sub", text: `${noun} ${list.length}개` })]),
             el("span", { class: "chev", text: "▾" }),
           ]
         ),
-        open ? el("div", { class: "group-body" }, list.map((it) => eclassRow(it, { inGroup: true }))) : null,
+        open ? el("div", { class: "tc-list" }, list.map(subItem)) : null,
+        footer(first.due, `${NEED[first.type] || "확인 필요"} ${list.length}`),
       ]);
-      return card;
     });
   }
 
@@ -543,18 +601,6 @@
   const isUrgent = (iso) => !!iso && daysLeft(iso) <= URGENT_DAYS;
 
   const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
-
-  // e클래스 과제·강의 한 줄
-  function eclassRow(it, { inGroup = false } = {}) {
-    const pct = it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "";
-    const sub = inGroup ? pct : [it.course, pct].filter(Boolean).join(" · ");
-    const row = el("a", { class: ["todo", isUrgent(it.due) ? "urgent" : "", inGroup ? "in-group" : ""].filter(Boolean).join(" "), href: it.url, target: "_blank", rel: "noopener" }, [
-      el("span", { class: `badge ${it.type}`, text: TYPE_LABEL[it.type] }),
-      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), sub ? el("div", { class: "sub", text: sub }) : null]),
-      dueEl(it.due),
-    ]);
-    return row;
-  }
 
   // 비교과 한 줄
   function programRow(it) {
