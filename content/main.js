@@ -116,7 +116,7 @@
     { id: "week", label: "이번 주" },
     { id: "calendar", label: "캘린더" },
     { id: "programs", label: "비교과" },
-    { id: "alerts", label: "알림" },
+    { id: "ai", label: "AI" }, // 예전 "알림" 탭. 알림은 각 탭의 빨간 점·색으로 충분해서 AI 탭으로 바꿈 (10/14)
   ];
 
   const launcher = el("button", { class: "launcher", text: "+", title: "HSU PLUS 열기" });
@@ -164,8 +164,7 @@
     if (current === "week") return renderWeek();
     if (current === "calendar") return renderCalendar();
     if (current === "programs") return renderPrograms();
-    const label = TABS.find((t) => t.id === current).label;
-    content.replaceChildren(el("p", { class: "placeholder", text: `"${label}" 화면은 다음 단계에서 만들어요.` }));
+    if (current === "ai") return renderAI();
   }
 
   // ---------- 이번 주 탭 ----------
@@ -561,7 +560,8 @@
     import(chrome.runtime.getURL("core/cache.js")),
     import(chrome.runtime.getURL("adapters/eclass.js")),
     import(chrome.runtime.getURL("adapters/hsportal.js")),
-  ]).then(([cache, eclass, hsportal]) => ({ cache, eclass, hsportal }));
+    import(chrome.runtime.getURL("core/ai.js")),
+  ]).then(([cache, eclass, hsportal, ai]) => ({ cache, eclass, hsportal, ai }));
 
   // 다른 학교 사이트 페이지 글은 백그라운드가 받아 준다
   async function getText(url) {
@@ -639,6 +639,7 @@
     if (current === "week") renderWeek();
     else if (current === "calendar") renderCalendar();
     else if (current === "programs") renderPrograms();
+    else if (current === "ai" && !content.querySelector(".ai-input")?.value) renderAI(); // 입력 중이면 다시 그리지 않음
   }
 
   // 공통 형식으로 잘 바뀌었는지 콘솔에서 확인 (M2 완료 기준)
@@ -935,6 +936,129 @@
         .map((s) => ({ start: s.start, end: s.end, title: p.title, session: s.name, place: p.place, url: p.url, isProgram: true }))
     );
   }
+
+  // ---------- AI 탭 (예전 "알림" 탭 자리) ----------
+  // 상업 사이트 챗봇처럼: 자주 쓰는 질문은 버튼으로, 직접 입력은 200자까지.
+  // 지금은 AI 서버를 아직 연결하지 않아서(결제 전) 브라우저 안에서 정해진 방식으로 답한다.
+  //  → 이 "기본 답변"은 AI 연결 뒤에도 하루 한도를 넘었거나 서버가 안 될 때 그대로 쓰인다.
+  // 답은 "문장 한 줄 + 실제 항목 카드". 날짜·마감은 항상 학교에서 가져온 값으로 그린다.
+  // 질문 판단·보낼 정보 정리는 core/ai.js
+  const AI_ENDPOINT = ""; // AI 서버(Cloudflare Worker) 주소. 비어 있으면 기본 답변만
+  const chat = []; // { who: "me"|"bot", text, picks?, note? } (이 탭을 연 동안만 기억)
+  let aiPreviewOpen = false;
+
+  function aiData() {
+    return {
+      eclassItems: eclass?.ok ? eclass.data.items : [],
+      myPrograms: mine?.ok ? mine.data : null,
+      openPrograms: programs?.ok ? programs.data : [],
+      timetable: week?.ok ? week.items : [],
+    };
+  }
+
+  async function ask(question, presetId) {
+    const { ai } = await mods;
+    const q = ai.sanitizeQuestion(question);
+    if (!q) return;
+    const last = chat[chat.length - 2];
+    if (last && last.who === "me" && last.text === q) return; // 같은 질문 연속은 무시
+    chat.push({ who: "me", text: q });
+    const built = ai.buildContext(aiData());
+    const intent = presetId || ai.detectIntent(q);
+    const a = ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
+    chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: a.note });
+    while (chat.length > 30) chat.shift();
+    renderAI({ scroll: true });
+  }
+
+  // 답 카드 한 줄: 실제 항목으로 그린다
+  function pickRow(p) {
+    const r = p.ref;
+    const it = r.item;
+    if (r.kind === "task") {
+      const kind = { video: "강의", assignment: "과제", quiz: "퀴즈" }[it.type];
+      return el("a", { class: "ai-pick", href: openUrl(it), target: "_blank", rel: "noopener" }, [
+        el("span", { class: `badge ${it.type}`, text: kind }),
+        el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [it.course, p.reason].filter(Boolean).join(" · ") })]),
+        dueEl(it.due),
+      ]);
+    }
+    if (r.kind === "survey") {
+      return el("a", { class: "ai-pick", href: it.listUrl, target: "_blank", rel: "noopener" }, [
+        el("span", { class: "badge survey", text: "설문" }),
+        el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: p.reason || "종료된 프로그램 · 설문 필요" })]),
+      ]);
+    }
+    const s = r.kind === "mine" ? r.session : null;
+    const when = r.kind === "mine" ? (s?.kind === "exact" ? `${dayLabel(new Date(s.start))} ${hm(new Date(s.start))}–${hm(new Date(s.end))}` : s ? periodText(s) : "") : "";
+    return el("a", { class: "ai-pick", href: it.url, target: "_blank", rel: "noopener" }, [
+      el("span", { class: "badge program", text: r.kind === "open" ? (it.meta?.point ? `${it.meta.point}p` : "신청") : "내 비교과" }),
+      el("div", { class: "info" }, [el("div", { class: "name", text: it.title }), el("div", { class: "sub", text: [p.reason || when, r.kind === "open" ? "신청 가능" : null].filter(Boolean).join(" · ") })]),
+      r.kind === "open" ? dueEl(it.due, "신청") : null,
+    ]);
+  }
+
+  function renderAI({ scroll = false } = {}) {
+    if (current !== "ai") return;
+    const loadingAny = eclassLoading || programsLoading || mineLoading || loading;
+    const head = el("div", { class: "ai-head" }, [
+      el("div", { class: "ai-title" }, [el("strong", { text: "HSU PLUS AI" }), el("span", { class: "ai-mode", text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
+      el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
+    ]);
+
+    const log = el("div", { class: "chat" });
+    log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." })]));
+    for (const m of chat) {
+      const bubble = el("div", { class: "bubble", text: m.text });
+      const parts = [bubble];
+      if (m.picks?.length) parts.push(el("div", { class: "ai-picks" }, m.picks.map(pickRow)));
+      if (m.note) parts.push(el("div", { class: "ai-note", text: m.note }));
+      log.appendChild(el("div", { class: `msg ${m.who}` }, parts));
+    }
+
+    const presets = el(
+      "div",
+      { class: "ai-presets" },
+      PRESET_LIST.map((p) => el("button", { class: "chip", text: p.label, onclick: () => ask(p.label, p.id) }))
+    );
+    const input = el("input", { class: "ai-input", type: "text", maxlength: "200", placeholder: "예: 이번 주 과제 뭐 남았어?" });
+    const counter = el("span", { class: "ai-count", text: "0/200" });
+    input.addEventListener("input", () => (counter.textContent = `${input.value.length}/200`));
+    const send = () => {
+      const v = input.value;
+      input.value = "";
+      ask(v);
+    };
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.isComposing) send();
+    });
+    const form = el("div", { class: "ai-form" }, [input, el("button", { class: "btn", text: "보내기", onclick: send })]);
+
+    // 보낼 내용 보기: AI 연결 뒤 실제로 나가게 될 정보를 그대로 보여 준다 (지금은 아무것도 나가지 않음)
+    const preview = el("details", { class: "ai-preview" }, [
+      el("summary", { text: "AI에 보낼 내용 보기" }),
+      el("p", { class: "ai-note", text: AI_ENDPOINT ? "질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." : "지금은 AI 연결 전이라 아무것도 밖으로 보내지 않아요. 연결되면 질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." }),
+      el("pre", { class: "ai-json" }),
+    ]);
+    if (aiPreviewOpen) preview.open = true;
+    preview.addEventListener("toggle", async () => {
+      aiPreviewOpen = preview.open;
+      if (!preview.open) return;
+      const { ai } = await mods;
+      preview.querySelector("pre").textContent = JSON.stringify(ai.buildContext(aiData()).context, null, 1);
+    });
+    if (aiPreviewOpen) mods.then(({ ai }) => (preview.querySelector("pre").textContent = JSON.stringify(ai.buildContext(aiData()).context, null, 1)));
+
+    content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, [presets, form, el("div", { class: "ai-foot" }, [counter, preview])])]));
+    if (scroll) log.lastElementChild?.scrollIntoView({ block: "nearest" });
+  }
+  // core/ai.js의 PRESETS와 같은 내용 (모듈을 불러오기 전에도 버튼을 그리려고 여기 둠)
+  const PRESET_LIST = [
+    { id: "today", label: "오늘 뭐 해야 돼?" },
+    { id: "week", label: "이번 주 일정 요약" },
+    { id: "free", label: "비는 시간에 할 비교과" },
+    { id: "points", label: "졸업 포인트 얼마 남았어?" },
+  ];
 
   // ---------- 연결 상태 (접어 두는 진단 칸) ----------
   const statusList = el("ul", { class: "status" });

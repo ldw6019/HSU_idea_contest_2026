@@ -1,0 +1,34 @@
+# HSU PLUS AI 서버 설정 예시. 복사해서 wrangler.toml로 쓰고, 비밀값은 여기 적지 않는다.
+#   키 등록(본인이 직접): npx wrangler secret put ANTHROPIC_API_KEY
+#   저장소 만들기:        npx wrangler d1 create hsuplus  → 아래 database_id 채우기
+#                        npx wrangler d1 execute hsuplus --remote --file=worker/schema.sql
+#   배포:                npx wrangler deploy
+name = "hsuplus-ai"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+# 모델 바꾸기: 여기 세 줄(+요금)만 바꾸면 된다. 확장은 다시 배포하지 않는다.
+AI_PROVIDER = "anthropic"          # anthropic | openai_compat | mock
+AI_MODEL = "claude-haiku-5-5"
+PRICE_IN_PER_MTOK = "0.1"          # 100만 토큰당 달러 (하루 비용 상한 계산용)
+PRICE_OUT_PER_MTOK = "0.5"
+# AI_FALLBACK_PROVIDER = ""        # 기본 모델 실패 시 한 번 더 시도할 예비
+# AI_FALLBACK_MODEL = ""
+# AI_BASE_URL = ""                 # openai_compat일 때 주소
+
+# 확장 주소만 허용 (chrome://extensions에서 확장 ID 확인)
+ALLOWED_ORIGINS = "chrome-extension://확장ID"
+
+# 한도
+ASK_DAILY_PER_INSTALL = "20"
+CLASSIFY_DAILY_PER_INSTALL = "30"
+PER_MINUTE = "6"
+DAILY_COST_CAP_MICROUSD = "1000000"  # 하루 1달러를 넘으면 그날은 기본 답변 모드
+ASK_MAX_TOKENS = "400"
+CLASSIFY_MAX_TOKENS = "700"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "hsuplus"
+database_id = "여기에_ID"
