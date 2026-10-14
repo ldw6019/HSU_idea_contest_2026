@@ -1,11 +1,12 @@
 // HSU PLUS — 과목 페이지(강의실, /course/view.php) 꾸미기
 // e클래스 기본 화면은 강의를 다 들었는지, 과제를 냈는지 하나씩 눌러 봐야 안다.
-// 그래서 강의실 목록에 바로 보이게 덧붙인다 (기존 익텐 hsu-ecx의 기능을 참고해 우리 디자인으로).
+// 그래서 강의실 목록에 바로 보이게 덧붙인다 (기존 익텐 hsu-ecx의 배치를 따르고, 색 입히는 방식은 우리 식으로:
+// 빈 칸도 상태 색으로 옅게 + 듣는 중인 강의는 흐르는 줄무늬).
 // 색: 초록 = 완료(출석·제출·응시)에만. 나머지는 패널과 같은 마감 위험도 색
-//  - 강의 영상: 제목 옆 상태(출석 / 결석 / 미시청·수강 중 / 열리기 전) + 아래 줄에 학습 진도 막대
-//               (학습시간 / 출석 기준 시간 = 영상 길이의 90%), 아직 기간 중이면 "더 필요한 시간"·"마감까지"
-//  - 과제: 제목 옆 제출 완료 / 미제출 + 제출 시각·마감
-//  - 퀴즈: 제목 옆 응시 완료 / 미응시 + 마감
+//  - 강의 영상: 제목 아래 진도 막대(안에 "학습시간 / 출석 기준 시간(%)", 기준 = 영상 길이의 90%)
+//               + 오른쪽 꼬리표: 출석 / 결석 / 열림 날짜 / "N분 N초 필요" + "N일 … 남음"(1초마다 갱신)
+//  - 과제: 제출 완료(+제출 시각) / 미제출 + 마감 + 남은 시간
+//  - 퀴즈: 응시 완료 / 미응시 + 마감 + 남은 시간
 // 읽는 곳: 온라인출석부 진도 표, 과제 목록 표, 과제 화면의 "제출 여부·종료 일시·최종 수정 일시" 줄만,
 //          퀴즈 목록 표, 퀴즈 응시 요약의 "진행 상황" 칸만. 성적·점수·첨부파일은 읽지 않는다.
 // 또 패널의 강의 카드를 눌러 들어오면(#hsuplus-module-번호) 그 강의로 스크롤하고 잠깐 강조한다.
@@ -21,7 +22,6 @@
   if (jumpId) history.replaceState(null, "", location.pathname + location.search);
 
   const ATTEND_RATIO = 0.9; // 출석 기준 = 영상 길이의 90% (예: 53:22 → 48:01)
-  const URGENT_DAYS = 2;
 
   // ---------- 시간·날짜 표시 ----------
   const pad = (n) => String(n).padStart(2, "0");
@@ -30,13 +30,6 @@
     sec = Math.max(0, Math.floor(sec));
     const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
     return h ? `${h}:${pad(m)}:${pad(s)}` : `${pad(m)}:${pad(s)}`;
-  };
-  const human = (sec) => {
-    sec = Math.max(0, Math.round(sec));
-    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60);
-    if (d) return `${d}일 ${h}시간`;
-    if (h) return `${h}시간 ${m}분`;
-    return `${Math.max(m, 1)}분`;
   };
   // 0시 마감은 "전날 24:00"으로 (패널과 같은 규칙)
   const isMidnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
@@ -54,7 +47,6 @@
     const n = daysLeft(d);
     return n <= 1 ? 1 : n === 2 ? 2 : n <= 7 ? 3 : n < 14 ? 4 : 5;
   };
-  const dLabel = (d) => (daysLeft(d) <= 0 ? "오늘" : `D-${daysLeft(d)}`);
 
   // ---------- 화면 조각 ----------
   const mk = (tag, cls, text) => {
@@ -63,51 +55,86 @@
     if (text != null) n.textContent = text;
     return n;
   };
+  // 남은 시간을 "6일 5시간 16분 56초"처럼 (앞쪽 0 단위는 생략)
+  const dhms = (sec) => {
+    sec = Math.max(0, Math.floor(sec));
+    const d = Math.floor(sec / 86400), h = Math.floor((sec % 86400) / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+    const parts = [];
+    if (d) parts.push(`${d}일`);
+    if (d || h) parts.push(`${h}시간`);
+    if (d || h || m) parts.push(`${m}분`);
+    parts.push(`${s}초`);
+    return parts.join(" ");
+  };
+
   function injectStyle() {
     if (document.getElementById("hsup-style")) return;
     const st = mk("style");
     st.id = "hsup-style";
+    // 상태별 색은 변수 3개: --a(밝은 쪽) --b(진한 쪽) --ink(그 위 글자)
+    // 초록은 "완료"(출석·제출 완료·응시 완료)에만. 진행 중은 패널과 같은 마감 위험도 5단계 색
     st.textContent = `
-      .hsup-pill { display: inline-flex; align-items: center; gap: 5px; margin: 0 8px 0 6px; padding: 2px 10px;
-        border-radius: 999px; font-size: 12.5px; font-weight: 700; line-height: 1.6; vertical-align: middle; white-space: nowrap;
-        box-shadow: inset 0 0 0 1px rgba(0,0,0,.06); }
-      .hsup-pill::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-      /* 초록은 "완료"(출석·제출 완료·응시 완료)에만 쓴다. 그래서 다른 곳에서는 초록을 쓰지 않음 */
-      .hsup-ok { background: #dcf3e5; color: #146c43; }
-      .hsup-bad { background: #fde3e3; color: #b42318; }
-      .hsup-wait { background: #e9edf3; color: #4a5568; }
-      .hsup-r1 { background: #fde3e3; color: #b42318; } .hsup-r2 { background: #ffe6d5; color: #b93c0a; }
-      .hsup-r3 { background: #ffefcc; color: #955400; } .hsup-r4 { background: #fcf1c4; color: #735900; }
-      .hsup-r5 { background: #e9edf3; color: #46536a; }
-      /* 진행 줄: 아이콘 왼쪽 끝에 맞춘다 */
-      .hsup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 10px; margin: 6px 0 6px 0; }
-      .hsup-track { position: relative; flex: 0 1 360px; min-width: 160px; height: 14px; border-radius: 999px;
-        background: #dfe4eb; box-shadow: inset 0 1px 2px rgba(15,23,42,.12); overflow: hidden; }
-      .hsup-fill { height: 100%; border-radius: inherit; background: #22a55a; }
-      .hsup-fill.hsup-f-bad { background: #a9b1be; }
-      .hsup-fill.hsup-f-r1 { background: #e5484d; } .hsup-fill.hsup-f-r2 { background: #f76b15; }
-      .hsup-fill.hsup-f-r3 { background: #f5a623; } .hsup-fill.hsup-f-r4 { background: #e6c02a; }
-      .hsup-fill.hsup-f-r5 { background: #8fa3bf; }
-      /* 퍼센트는 상태 색으로 크게, 시간은 회색으로 작게 */
-      .hsup-num { display: inline-flex; align-items: baseline; gap: 6px; color: #46536a; font-variant-numeric: tabular-nums; }
-      .hsup-pct { font-size: 15px; font-weight: 800; }
-      .hsup-pct.hsup-ok, .hsup-pct.hsup-bad, .hsup-pct[class*="hsup-r"] { background: none; box-shadow: none; }
-      .hsup-time { font-size: 12.5px; font-weight: 600; color: #5b6577; }
-      .hsup-chip { display: inline-flex; align-items: center; gap: 5px; font-size: 12.5px; font-weight: 700; padding: 2px 9px;
-        border-radius: 6px; line-height: 1.6; white-space: nowrap; }
-      /* 꽉 찬 칩: 해야 할 일(더 들을 시간)과 남은 시간 */
-      .hsup-solid.hsup-r1 { background: #e5484d; color: #fff; } .hsup-solid.hsup-r2 { background: #f76b15; color: #fff; }
-      .hsup-solid.hsup-r3 { background: #f5a623; color: #3d2600; } .hsup-solid.hsup-r4 { background: #f2cf3d; color: #3d3000; }
-      .hsup-solid.hsup-r5 { background: #8fa3bf; color: #fff; }
-      .hsup-left { background: #3b4a63; color: #fff; }
-      .hsup-left::before { content: ""; width: 9px; height: 9px; border-radius: 50%; box-shadow: inset 0 0 0 1.6px currentColor;
-        background: conic-gradient(currentColor 0 25%, transparent 0); opacity: .9; }
+      .hsup-row { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 8px; margin: 6px 0 8px 0;
+        font-variant-numeric: tabular-nums; }
+      .hsup-ok   { --a: #2fe07a; --b: #0fbf55; --ink: #fff; --t: #d6f7e3; --d: #0b7a38; }
+      .hsup-bad  { --a: #ff6b6b; --b: #d42f35; --ink: #fff; --t: #fde2e2; --d: #b42318; }
+      .hsup-gray { --a: #c9cfd8; --b: #9aa3b1; --ink: #fff; --t: #e6eaf0; --d: #5b6577; }
+      .hsup-wait { --a: #eef1f5; --b: #dde2ea; --ink: #4a5568; --t: #eef1f5; --d: #4a5568; }
+      .hsup-r1 { --a: #ff6b6b; --b: #d42f35; --ink: #fff; --t: #fde2e2; --d: #b42318; }
+      .hsup-r2 { --a: #ff9b54; --b: #e8590c; --ink: #fff; --t: #ffe5d3; --d: #b93c0a; }
+      .hsup-r3 { --a: #ffc94d; --b: #f0a01a; --ink: #3d2600; --t: #ffefcc; --d: #8f5200; }
+      .hsup-r4 { --a: #fae17a; --b: #e3bf1f; --ink: #3d3000; --t: #fcf2c6; --d: #6e5600; }
+      .hsup-r5 { --a: #b7c5d9; --b: #8193ad; --ink: #fff; --t: #e8edf4; --d: #46536a; }
+      .hsup-left { --a: #3d82f0; --b: #0b4ea2; --ink: #fff; --t: #e1ecfd; --d: #0b4ea2; }
+
+      /* 진도 막대: 글자를 막대 안에. 빈 칸은 상태 색을 옅게(0%여도 급한 정도가 보이게),
+         채운 칸은 밝은색→진한색 그라데이션 + 위쪽 광택. 아직 듣는 중인 강의는 사선 줄무늬가 천천히 흐른다 */
+      .hsup-bar { position: relative; flex: none; width: 320px; height: 16px; border-radius: 5px; overflow: hidden;
+        background: var(--t, #e6eaf0); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--b, #9aa3b1) 24%, transparent); }
+      .hsup-fill { position: absolute; inset: 0 auto 0 0; overflow: hidden; border-radius: 5px 0 0 5px;
+        background: linear-gradient(180deg, rgba(255,255,255,.22), rgba(255,255,255,0) 55%), linear-gradient(90deg, var(--a), var(--b)); }
+      .hsup-fill.hsup-full { border-radius: 5px; }
+      /* 완료 막대는 꼬리표보다 한 단계 진한 초록 (안의 흰 글자가 잘 보이게) */
+      .hsup-fill.hsup-ok { --a: #23a85b; --b: #0b7d3e; }
+      .hsup-fill.hsup-gray { --a: #a9b1be; --b: #7d889a; }
+      .hsup-fill.hsup-live {
+        background: repeating-linear-gradient(-45deg, rgba(255,255,255,.24) 0 8px, rgba(255,255,255,0) 8px 16px),
+          linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,0) 55%), linear-gradient(90deg, var(--a), var(--b));
+        background-size: 22.63px 22.63px, 100% 100%, 100% 100%; animation: hsup-flow 1.4s linear infinite; }
+      @keyframes hsup-flow { to { background-position: 22.63px 0, 0 0, 0 0; } }
+      @media (prefers-reduced-motion: reduce) { .hsup-fill.hsup-live { animation: none; } }
+      .hsup-lbl { position: absolute; left: 0; top: 0; width: 320px; height: 16px; line-height: 16px; text-align: center;
+        font-size: 11.5px; font-weight: 700; color: var(--d, #4a5568); white-space: nowrap; }
+      .hsup-fill .hsup-lbl { color: var(--ink); }
+      .hsup-fill .hsup-lbl[data-ink="light"] { text-shadow: 0 1px 1px rgba(0,0,0,.3); }
+      .hsup-tag[data-ink="light"] { text-shadow: 0 1px 1px rgba(0,0,0,.18); }
+
+      /* 막대 오른쪽 꼬리표: 진한 그라데이션 (안내용 회색 꼬리표만 옅게) */
+      .hsup-tag { display: inline-flex; align-items: center; height: 20px; padding: 0 8px; border-radius: 6px;
+        font-size: 12px; font-weight: 700; color: var(--ink); white-space: nowrap;
+        background: linear-gradient(180deg, rgba(255,255,255,.2), rgba(255,255,255,0) 55%), linear-gradient(90deg, var(--a), var(--b));
+        box-shadow: 0 1px 2px rgba(15,23,42,.16); }
+      .hsup-tag.hsup-wait { background: #eef1f5; box-shadow: inset 0 0 0 1px #dde2ea; }
+      /* 과제·퀴즈 칸끼리 구분: 제출 시각 = 옅은 초록, 늦은 제출 = 주황, 마감 = 진회색 */
+      .hsup-tag.hsup-at { background: var(--t); color: var(--d); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--b) 45%, transparent); }
+      .hsup-due { --a: #7a8597; --b: #535d6e; --ink: #fff; }
+      .hsup-late { --a: #ffab3d; --b: #f57c00; --ink: #fff; }
+      /* 과제·퀴즈는 제목 바로 옆 한 줄에 */
+      .hsup-inline { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-left: 10px; vertical-align: middle;
+        font-variant-numeric: tabular-nums; }
+      /* 제목 옆 알약은 막대가 없을 때(영상 길이를 모를 때)만 */
+      .hsup-pill { margin: 0 8px 0 6px; vertical-align: middle; }
+
       .hsup-flash { transition: background .6s, outline-color .6s; outline: 3px solid #0b4ea2 !important; outline-offset: 4px; background: #eef4ff !important; }
     `;
     document.head.appendChild(st);
   }
-  const pill = (cls, text) => mk("span", `hsup-pill ${cls}`, text);
-  const chip = (cls, text) => mk("span", `hsup-chip ${cls}`, text);
+  const LIGHT_INK = new Set(["hsup-ok", "hsup-bad", "hsup-gray", "hsup-r1", "hsup-r2", "hsup-r5", "hsup-left", "hsup-due", "hsup-late"]);
+  const tag = (cls, text) => {
+    const t = mk("span", `hsup-tag ${cls}`, text);
+    if (!cls.includes("hsup-at") && cls.split(" ").some((c) => LIGHT_INK.has(c))) t.dataset.ink = "light";
+    return t;
+  };
   function placePill(li, node) {
     const a = li.querySelector(".activityinstance > a");
     if (a) a.after(node);
@@ -117,61 +144,88 @@
     if (inst) inst.after(row);
   }
 
+  // 남은 시간 꼬리표: 1초마다 줄어든다
+  const live = new Set();
+  function countdown(until) {
+    const t = tag("hsup-left", "");
+    const tick = () => {
+      const left = (until - Date.now()) / 1000;
+      t.textContent = left > 0 ? `${dhms(left)} 남음` : "마감";
+      return left > 0;
+    };
+    tick();
+    live.add({ t, tick });
+    return t;
+  }
+  setInterval(() => {
+    for (const x of live) if (!x.t.isConnected || !x.tick()) live.delete(x);
+  }, 1000);
+
+  // 진도 막대 (글자 안에)
+  function bar(ratio, colorCls, text, moving) {
+    const b = mk("div", `hsup-bar ${colorCls}`);
+    b.appendChild(mk("span", "hsup-lbl", text));
+    const w = Math.min(1, Math.max(0, ratio));
+    if (w > 0) {
+      const f = mk("div", `hsup-fill ${colorCls}${w >= 1 ? " hsup-full" : ""}${moving ? " hsup-live" : ""}`);
+      f.style.width = `${w * 100}%`;
+      const l = mk("span", "hsup-lbl", text);
+      if (LIGHT_INK.has(colorCls)) l.dataset.ink = "light";
+      f.appendChild(l);
+      b.appendChild(f);
+    }
+    return b;
+  }
+
   // ---------- 강의 영상 ----------
+  // [ 학습시간 / 출석 기준 (비율%) ] [출석] 또는 [N분 N초 필요] [N일 … 남음]
   function decorateVideo(li, v, p, now) {
     const required = v.lengthSec ? Math.floor(v.lengthSec * ATTEND_RATIO) : null;
     const learned = p?.learnedSec || 0;
     const from = v.from, to = v.to;
-    let status, fillCls = "";
-    if (p?.attended) status = pill("hsup-ok", "출석");
-    else if (to && to < now) {
-      status = pill("hsup-bad", "결석");
-      fillCls = "hsup-f-bad";
-    } else if (from && from > now) status = pill("hsup-wait", "열리기 전");
-    else if (to) {
-      const t = tier(to);
-      status = pill(`hsup-r${t}`, `${learned > 0 ? "수강 중" : "미시청"} · ${dLabel(to)}`);
-      fillCls = `hsup-f-r${t}`;
-    } else status = pill("hsup-wait", learned > 0 ? "수강 중" : "미시청");
-    placePill(li, status);
+    const open = (!from || from <= now) && (!to || to >= now);
+    const state = p?.attended ? "ok" : to && to < now ? "bad" : from && from > now ? "wait" : "live";
+    const color = state === "ok" ? "hsup-ok" : state === "bad" ? "hsup-gray" : state === "wait" ? "hsup-gray" : to ? `hsup-r${tier(to)}` : "hsup-r5";
 
-    if (!required) return;
+    if (!required) {
+      const label = state === "ok" ? "출석" : state === "bad" ? "결석" : state === "wait" ? "열리기 전" : learned > 0 ? "수강 중" : "미시청";
+      placePill(li, tag(state === "ok" ? "hsup-ok" : state === "bad" ? "hsup-bad" : state === "wait" ? "hsup-wait" : color, label));
+      li.querySelector(".hsup-tag")?.classList.add("hsup-pill");
+      return;
+    }
     const row = mk("div", "hsup-row");
-    const track = mk("div", "hsup-track");
-    const fill = mk("div", `hsup-fill ${fillCls}`);
-    fill.style.width = `${Math.min(100, (learned / required) * 100)}%`;
-    track.appendChild(fill);
     const pct = Math.round((learned / required) * 1000) / 10;
-    const num = mk("span", "hsup-num");
-    const pctCls = p?.attended ? "hsup-ok" : fillCls === "hsup-f-bad" ? "hsup-bad" : fillCls ? fillCls.replace("hsup-f-", "hsup-") : "";
-    num.append(mk("span", `hsup-pct ${pctCls}`, `${pct}%`), mk("span", "hsup-time", `${clock(learned)} / ${clock(required)}`));
-    row.append(track, num);
-    track.title = `출석 기준: 영상 길이(${clock(v.lengthSec)})의 90%`;
+    const b = bar(learned / required, color, `${clock(learned)} / ${clock(required)} (${pct}%)`, state === "live");
+    b.title = `출석 기준: 영상 길이(${clock(v.lengthSec)})의 90%`;
+    row.appendChild(b);
 
-    // 기간 중이고 아직 출석 전이면: 더 들어야 할 시간과 마감까지 남은 시간
-    if (!p?.attended && to && to >= now && (!from || from <= now)) {
+    if (state === "ok") row.appendChild(tag("hsup-ok", "출석"));
+    else if (state === "bad") row.appendChild(tag("hsup-bad", "결석"));
+    else if (state === "wait") row.appendChild(tag("hsup-wait", from ? `${from.getMonth() + 1}/${from.getDate()}(${DAY[from.getDay()]}) 열림` : "열리기 전"));
+    else if (open) {
       const need = required - learned;
-      const left = (to - now) / 1000;
-      if (need > 0) {
-        if (need > left) row.appendChild(chip("hsup-solid hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
-        else row.appendChild(chip(`hsup-solid hsup-r${tier(to)}`, `${human(need)} 더 들으면 출석!`));
-      }
-      row.appendChild(chip("hsup-left", `마감까지 ${human(left)} 남음`));
+      if (to && need > (to - now) / 1000) row.appendChild(tag("hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
+      else if (need > 0) row.appendChild(tag(color, `${dhms(need)} 필요`));
+      if (to) row.appendChild(countdown(to.getTime()));
     }
     placeRow(li, row);
   }
 
   // ---------- 과제 · 퀴즈 ----------
+  // 제목 옆 한 줄: [제출 완료] [제출 10/10(토) 17:04] [마감 …]  /  [미제출] [마감 …] [N일 … 남음]  (마감 뒤 제출이면 [늦은 제출 …])
   function decorateTask(li, { done, doneLabel, todoLabel, due, doneAt }, now) {
     const past = due && due < now;
-    if (done) placePill(li, pill("hsup-ok", doneLabel));
-    else if (past) placePill(li, pill("hsup-bad", `${todoLabel} · 마감 지남`));
-    else if (due) placePill(li, pill(`hsup-r${tier(due)}`, `${todoLabel} · ${dLabel(due)}`));
-    else placePill(li, pill("hsup-wait", todoLabel));
-    const row = mk("div", "hsup-row");
-    if (doneAt) row.appendChild(chip("hsup-ok", `제출 ${dateLabel(doneAt)}`));
-    if (due) row.appendChild(chip("hsup-wait", `마감 ${dateLabel(due)}`));
-    if (row.childNodes.length) placeRow(li, row);
+    const row = mk("span", "hsup-inline");
+    if (done) row.appendChild(tag("hsup-ok", doneLabel));
+    else if (past) row.appendChild(tag("hsup-bad", `${todoLabel} · 마감 지남`));
+    else row.appendChild(tag(due ? `hsup-r${tier(due)}` : "hsup-wait", todoLabel));
+    if (doneAt) {
+      const late = due && doneAt > due;
+      row.appendChild(tag(late ? "hsup-late" : "hsup-ok hsup-at", `${late ? "늦은 제출" : "제출"} ${dateLabel(doneAt)}`));
+    }
+    if (due) row.appendChild(tag("hsup-due", `마감 ${dateLabel(due)}`));
+    if (!done && due && !past) row.appendChild(countdown(due.getTime()));
+    placePill(li, row);
   }
 
   // ---------- 불러와서 붙이기 ----------
