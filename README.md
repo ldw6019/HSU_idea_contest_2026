@@ -63,9 +63,7 @@ docs/              계획, 마일스톤, 개발 일지, 사이트 분석 노트,
 
 ## 문서
 - [기능 목록과 구현 계획](docs/PLAN.md)
-- [마일스톤과 진행 방법](docs/MILESTONES.md)
+- [초기 구상 마일스톤과 진행 방법](docs/MILESTONES.md)
 - [개발 일지](docs/DEVLOG.md)
 - [사이트 분석 노트](docs/SITE-NOTES.md)
 
-## 참고
-- 기존 비공식 확장 프로그램(hsu-ecx, HSU 돋부기)에서 착안했으며, 코드는 새로 작성했습니다.
