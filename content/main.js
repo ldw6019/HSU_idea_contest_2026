@@ -361,63 +361,216 @@
     { id: "video", label: "강의", empty: "지금 들어야 할 강의가 없어요." },
     { id: "assignment", label: "과제", empty: "남은 과제가 없어요." },
     { id: "quiz", label: "퀴즈", empty: "남은 퀴즈가 없어요." },
+    { id: "program", label: "비교과", empty: "7일 안에 있는 내 비교과 일정이나 남은 설문이 없어요." },
   ];
   let weekKind = "video"; // 지금 고른 칸 (다시 그려도 유지)
 
+  // ---------- 숨기기 (10/14) ----------
+  // 선택 과제·오프라인으로 낸 과제처럼 계속 남아 거슬리는 항목을 숨긴다. 이 브라우저에만 저장 { 항목 id: 숨긴 시각 }
+  // 숨긴 항목은 개수·빨간 점·AI 답에서도 빠진다. 칸 맨 아래 "숨긴 항목 N개"에서 되돌릴 수 있다.
+  const HIDE_KEY = "ui:hidden";
+  let hidden = {};
+  chrome.storage.local
+    .get(HIDE_KEY)
+    .then((r) => {
+      hidden = r[HIDE_KEY] || {};
+      // 오래된 기록 정리 (120일)
+      const old = Date.now() - 120 * 86400000;
+      for (const [k, t] of Object.entries(hidden)) if (t < old) delete hidden[k];
+      rerender();
+    })
+    .catch(() => {});
+  const isHidden = (id) => !!hidden[id];
+  function setHidden(id, on) {
+    if (on) hidden[id] = Date.now();
+    else delete hidden[id];
+    try {
+      chrome.storage.local.set({ [HIDE_KEY]: hidden }).catch(() => {});
+    } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
+    renderWeek();
+  }
+  const hideBtn = (id) =>
+    el("button", {
+      class: "hide-btn",
+      title: "숨기기 (이 브라우저에서만)",
+      "aria-label": "숨기기",
+      text: "×",
+      onclick: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setHidden(id, true);
+      },
+    });
+  let showHiddenList = false;
+
+  // ---------- 이번 주 탭: 비교과 칸 ----------
+  // 오늘부터 7일 안의 내 비교과 회차(날짜·시각이 정해진 것) + 설문 필요. 신청 가능한 비교과는 비교과 탭에서.
+  const PROGRAM_DAYS = 7;
+  function programTodos(now = new Date()) {
+    if (!mine?.ok) return [];
+    const until = now.getTime() + PROGRAM_DAYS * 86400000;
+    const out = mine.data.surveys.map((p) => ({ id: `survey:${p.id}`, kind: "survey", p, at: null }));
+    for (const p of mine.data.programs) {
+      for (const s of p.sessions) {
+        if (s.kind !== "exact") continue;
+        const t = new Date(s.start).getTime();
+        if (new Date(s.end).getTime() < now.getTime() || t > until) continue;
+        out.push({ id: `mine:${p.id}:${s.start}`, kind: "session", p, s, at: s.start });
+      }
+    }
+    // 설문 먼저(지금 할 수 있는 일), 그다음 회차 시작 순
+    return out.sort((a, b) => (a.at ? new Date(a.at).getTime() : 0) - (b.at ? new Date(b.at).getTime() : 0));
+  }
+  function sessionCard(x) {
+    const { p, s } = x;
+    const st = new Date(s.start);
+    const days = daysLeft(s.start);
+    return el("a", { class: `tcard r${riskTier(s.start)}`, href: p.url, target: "_blank", rel: "noopener" }, [
+      el("div", { class: "tc-main" }, [
+        el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [s.name && s.name !== p.title ? s.name : null, p.place || p.department].filter(Boolean).join(" · ") })]),
+        hideBtn(x.id),
+      ]),
+      el("div", { class: "tc-foot" }, [
+        el("span", { class: "dline" }, [
+          icon("clock"),
+          el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(s.start)}`, text: days <= 0 ? "오늘" : `D-${days}` }),
+          el("span", { class: "when", text: `${dayLabel(st)} ${hm(st)}–${hm(new Date(s.end))}` }),
+        ]),
+        el("span", { class: "tc-status plain", text: "참여 예정" }),
+      ]),
+    ]);
+  }
+  const programTodoCard = (x) => (x.kind === "survey" ? surveyCard(x.p, x.id) : sessionCard(x));
+
+  // 강의 칸 맨 위: 출석까지 남은 시청 시간 합계 (강의마다 영상 길이의 90% − 들은 시간)
+  function watchSummary(items) {
+    let sec = 0;
+    let unknown = 0;
+    for (const it of items) {
+      if (!it.meta?.lengthSec) {
+        unknown++;
+        continue;
+      }
+      sec += Math.max(0, ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0));
+    }
+    const doomed = items.filter((it) => absenceCertain(it)).length;
+    const parts = [`출석까지 남은 시청 ${mmss(sec)}`, `${items.length}개`];
+    return el("div", { class: "sum-line", title: "강의마다 출석 기준(영상 길이의 90%)까지 남은 시간을 더했어요." }, [
+      icon("clock"),
+      el("span", { text: parts.join(" · ") }),
+      unknown ? el("span", { class: "muted", text: ` (길이 모르는 강의 ${unknown}개 제외)` }) : null,
+      doomed ? el("span", { class: "warn", text: ` · 출석 어려움 ${doomed}` }) : null,
+    ]);
+  }
+
+  // 숨긴 항목 되돌리기 (지금 고른 칸의 것만)
+  function hiddenSection(items, nameOf) {
+    if (!items.length) return null;
+    const btn = el("button", {
+      class: "hidden-toggle",
+      text: showHiddenList ? `숨긴 항목 ${items.length}개 접기` : `숨긴 항목 ${items.length}개 보기`,
+      onclick: () => {
+        showHiddenList = !showHiddenList;
+        renderWeek();
+      },
+    });
+    return el("div", { class: "hidden-box" }, [
+      btn,
+      showHiddenList
+        ? el(
+            "div",
+            { class: "hidden-list" },
+            items.map((x) => el("div", { class: "hidden-row" }, [el("span", { class: "name", text: nameOf(x) }), el("button", { class: "small", text: "다시 보이기", onclick: () => setHidden(x.id, false) })]))
+          )
+        : null,
+    ]);
+  }
+
   function renderWeek() {
+    if (current !== "week") return;
     const now = new Date();
     const head = el("div", { class: "section-head" }, [
       el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "" }),
-      el("button", { class: "small", text: "새로고침", disabled: eclassLoading ? "" : null, onclick: () => loadEclass({ force: true }) }),
+      el("button", {
+        class: "small",
+        text: "새로고침",
+        disabled: eclassLoading ? "" : null,
+        onclick: () => {
+          loadEclass({ force: true });
+          loadMine({ force: true });
+        },
+      }),
     ]);
 
-    // 종류별 남은 항목
-    let lists = null;
+    // 종류별 남은 항목 (숨긴 것 빼고). all = 숨긴 것 포함 (되돌리기 목록용)
+    let all = null;
     if (eclass?.ok) {
       const pending = eclass.data.items.filter((it) => it.status === "todo" && (!it.due || new Date(it.due) >= now)).sort(byDue);
-      lists = {
+      all = {
         // 강의: 수강 기간이 시작된 것만 (기간 없는 보충 영상은 출석과 무관해서 뺀다)
         video: pending.filter((it) => it.type === "video" && it.due && (!it.start || new Date(it.start) <= now)),
         assignment: pending.filter((it) => it.type === "assignment"),
         quiz: pending.filter((it) => it.type === "quiz"),
       };
     }
+    const progAll = programTodos(now);
+    const lists = {
+      video: all ? all.video.filter((it) => !isHidden(it.id)) : null,
+      assignment: all ? all.assignment.filter((it) => !isHidden(it.id)) : null,
+      quiz: all ? all.quiz.filter((it) => !isHidden(it.id)) : null,
+      program: mine?.ok ? progAll.filter((x) => !isHidden(x.id)) : null,
+    };
+    const hotOf = (k) => (k === "program" ? (lists.program || []).some((x) => x.kind === "survey" || isUrgent(x.at)) : (lists[k] || []).some((it) => isUrgent(it.due)));
 
     const seg = el(
       "div",
       { class: "seg", role: "tablist" },
       KINDS.map((k) => {
-        const items = lists?.[k.id] || [];
-        const hot = items.some((it) => isUrgent(it.due));
+        const items = lists[k.id];
+        const hot = hotOf(k.id);
         return el(
           "button",
           {
             class: k.id === weekKind ? "seg-btn active" : "seg-btn",
             role: "tab",
             "aria-selected": String(k.id === weekKind),
-            title: hot ? "마감 이틀 이내 항목이 있어요" : null,
+            title: hot ? (k.id === "program" ? "설문이 남았거나 이틀 안에 일정이 있어요" : "마감 이틀 이내 항목이 있어요") : null,
             onclick: () => {
               weekKind = k.id;
+              showHiddenList = false;
               renderWeek();
             },
           },
           [
-            el("span", { class: "lbl" }, [el("span", { text: k.label }), hot ? el("span", { class: "dot", "aria-label": "마감 임박" }) : null]),
-            lists ? el("span", { class: "n", text: String(items.length) }) : null,
+            el("span", { class: "lbl" }, [el("span", { text: k.label }), hot ? el("span", { class: "dot", "aria-label": "확인 필요" }) : null]),
+            items ? el("span", { class: "n", text: String(items.length) }) : null,
           ]
         );
       })
     );
 
+    const kind = KINDS.find((k) => k.id === weekKind);
     let bodyParts;
-    if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
+    if (weekKind === "program") {
+      if (!mine) bodyParts = [placeholder("내 비교과를 확인하고 있어요…")];
+      else if (!mine.ok) {
+        const e = mine.error || {};
+        bodyParts = [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }))];
+      } else {
+        bodyParts = [];
+        if (mine.error) bodyParts.push(el("p", { class: "stale", text: "비교과를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+        bodyParts.push(lists.program.length ? rows(lists.program.map(programTodoCard)) : placeholder(kind.empty));
+        bodyParts.push(hiddenSection(progAll.filter((x) => isHidden(x.id)), (x) => x.p.title));
+      }
+    } else if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
     else if (!eclass.ok) bodyParts = [failCard(eclass.error?.message, () => loadEclass({ force: true }))];
     else {
-      const kind = KINDS.find((k) => k.id === weekKind);
       const items = lists[weekKind];
       bodyParts = [];
       if (eclass.error) bodyParts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      if (weekKind === "video" && items.length) bodyParts.push(watchSummary(items));
       bodyParts.push(items.length ? rows(grouped(weekKind, items, kind.label)) : placeholder(kind.empty));
+      bodyParts.push(hiddenSection(all[weekKind].filter((it) => isHidden(it.id)), (it) => `${it.title} · ${it.course || ""}`));
     }
 
     const frame = el("div", { class: "frame" }, [seg, el("div", { class: "frame-body" }, bodyParts)]);
@@ -489,6 +642,7 @@
               ])
             : null,
         ]),
+        hideBtn(it.id),
       ]),
       footer(it.due, doomed ? "출석 어려움" : NEED[it.type] || "확인 필요", doomed),
     ]);
@@ -504,6 +658,7 @@
         doomed ? el("div", { class: "sub alert", text: `🚨 출석 어려움 · ${absenceNumbers(it)}` }) : null,
       ]),
       dueEl(it.due),
+      hideBtn(it.id),
     ]);
   }
 
@@ -791,11 +946,12 @@
     ]);
   }
 
-  function surveyCard(p) {
+  function surveyCard(p, hideId = null) {
     const done = /이수\d/.test(p.issuance) ? `이수 ${p.issuance.replace(/^이수\s*\d{4}-0?(\d+)-0?(\d+).*/, "$1/$2")}` : p.issuance;
     return el("a", { class: "tcard r2", href: p.listUrl, target: "_blank", rel: "noopener", title: "종료된 프로그램 목록에서 설문조사 버튼을 눌러 작성해요" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [p.category, done].filter(Boolean).join(" · ") })]),
+        hideId ? hideBtn(hideId) : null,
       ]),
       el("div", { class: "tc-foot" }, [
         el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}점 프로그램` : "종료된 프로그램" })]),
@@ -949,8 +1105,8 @@
 
   function aiData() {
     return {
-      eclassItems: eclass?.ok ? eclass.data.items : [],
-      myPrograms: mine?.ok ? mine.data : null,
+      eclassItems: eclass?.ok ? eclass.data.items.filter((it) => !isHidden(it.id)) : [], // 숨긴 항목은 AI 답에서도 뺀다
+      myPrograms: mine?.ok ? { ...mine.data, surveys: mine.data.surveys.filter((p) => !isHidden(`survey:${p.id}`)) } : null,
       openPrograms: programs?.ok ? programs.data : [],
       timetable: week?.ok ? week.items : [],
     };

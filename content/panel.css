@@ -387,3 +387,25 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 .ai-preview summary { cursor: pointer; }
 .ai-preview[open] { text-align: left; flex: 1; }
 .ai-json { max-height: 220px; overflow: auto; background: var(--ot-soft); border-radius: 8px; padding: 8px; font-size: 11px; white-space: pre-wrap; word-break: break-all; text-align: left; }
+
+/* ---------- 이번 주 탭: 숨기기 · 강의 시청 시간 합계 · 비교과 칸 (10/14) ---------- */
+.hide-btn {
+  flex: none; width: 22px; height: 22px; border: none; border-radius: 6px; background: transparent;
+  color: #b3bac6; font-size: 16px; line-height: 22px; text-align: center; cursor: pointer; padding: 0;
+}
+.hide-btn:hover { background: #eef1f5; color: var(--ot-sub); }
+.sub-item .hide-btn { margin-left: 2px; }
+.sum-line {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin: 10px 10px 0; padding: 8px 12px;
+  border-radius: 10px; background: #fff; font-size: 12.5px; font-weight: 600; color: var(--ot-text);
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06); font-variant-numeric: tabular-nums;
+}
+.sum-line .ico { color: var(--ot-primary); }
+.sum-line .muted { font-weight: 500; color: var(--ot-muted); }
+.sum-line .warn { color: #b42318; }
+.frame-body > .sum-line + .todos { padding-top: 8px; }
+.hidden-box { padding: 0 12px 10px; }
+.hidden-toggle { border: none; background: none; color: var(--ot-muted); font: inherit; font-size: 12px; cursor: pointer; padding: 4px 2px; text-decoration: underline; }
+.hidden-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+.hidden-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #fff; border-radius: 8px; font-size: 12.5px; color: var(--ot-sub); }
+.hidden-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
