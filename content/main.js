@@ -92,13 +92,13 @@
   }
 
   // ---------- 공통 화면 조각 ----------
-  function loginCard(site) {
+  function loginCard(site, retry = () => loadWeek({ force: true })) {
     return el("div", { class: "notice" }, [
       el("p", { text: `${site}에 로그인되어 있지 않아요.` }),
       el("p", { class: "sub", text: "로그인한 뒤 다시 시도해 주세요." }),
       el("div", { class: "row" }, [
         el("a", { class: "btn", href: LOGIN_URL[site] || "#", target: "_blank", rel: "noopener", text: "로그인하러 가기" }),
-        el("button", { class: "btn ghost", text: "다시 시도", onclick: () => loadWeek({ force: true }) }),
+        el("button", { class: "btn ghost", text: "다시 시도", onclick: retry }),
       ]),
     ]);
   }
@@ -263,8 +263,9 @@
       return;
     }
 
-    const items = weekItems();
-    const { start: monday } = weekRange();
+    const { start: monday, end: sunday } = weekRange();
+    // 수업 + 날짜·시각이 정해진 내 비교과 회차 (기간만 있는 비교과는 올리지 않는다)
+    const items = [...weekItems(), ...programSessionsIn(monday, sunday)];
     const now = new Date();
 
     // 보여줄 요일: 월~금 기본, 토·일은 수업이 있을 때만
@@ -316,13 +317,15 @@
         const e = new Date(it.end || it.start);
         const top = ((minutesOf(s) - minH * 60) / 60) * HOUR_PX;
         const height = Math.max(((minutesOf(e) - minutesOf(s)) / 60) * HOUR_PX, 18);
-        const block = el("div", { class: e < now ? "tt-block past" : "tt-block", title: `${it.course || it.title}\n${hm(s)}–${hm(e)}\n${[it.place, it.professor].filter(Boolean).join(" · ")}` }, [
+        const tip = `${it.isProgram ? "[비교과] " : ""}${it.course || it.title}${it.session && it.session !== it.title ? `\n${it.session}` : ""}\n${hm(s)}–${hm(e)}\n${[it.place, it.professor].filter(Boolean).join(" · ")}`;
+        const block = el(it.isProgram ? "a" : "div", { class: ["tt-block", it.isProgram ? "prog" : "", e < now ? "past" : ""].filter(Boolean).join(" "), title: tip, href: it.isProgram ? it.url : null, target: it.isProgram ? "_blank" : null, rel: it.isProgram ? "noopener" : null }, [
+          it.isProgram ? el("div", { class: "tt-tag", text: "비교과" }) : null,
           el("div", { class: "tt-name", text: it.course || it.title }),
           it.place ? el("div", { class: "tt-place", text: it.place }) : null,
         ]);
         block.style.top = top + "px";
         block.style.height = height - 2 + "px";
-        block.style.background = courseColor(it.course || it.title)?.c || "var(--ot-muted)";
+        if (!it.isProgram) block.style.background = courseColor(it.course || it.title)?.c || "var(--ot-muted)";
         col.appendChild(block);
       }
 
@@ -341,6 +344,7 @@
     const parts = [head];
     if (week.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
     if (!items.length) parts.push(el("p", { class: "placeholder", text: "이번 주 수업이 없어요." }));
+    else if (items.some((it) => it.isProgram)) parts.push(el("p", { class: "tt-legend", text: "흰 칸 = 날짜·시각이 정해진 내 비교과 (기간만 있는 비교과는 비교과 탭에서)" }));
     parts.push(grid);
     content.replaceChildren(...parts);
   }
@@ -566,7 +570,11 @@
     return r.text;
   }
 
-  const plainErr = (err) => ({ kind: err?.name === "ParseError" ? "parse" : "network", message: String(err?.message || err) });
+  const plainErr = (err) => ({
+    kind: err?.name === "LoginRequiredError" ? "login" : err?.name === "ParseError" ? "parse" : "network",
+    site: err?.site || null,
+    message: String(err?.message || err),
+  });
 
   let eclass = null; // { ok, data: {courses, items, failed}, fetchedAt, error }
   let eclassLoading = false;
@@ -604,6 +612,25 @@
       programs = { ok: false, error: plainErr(err) };
     }
     programsLoading = false;
+    rerender();
+  }
+
+  // 내 비교과 (마이페이지: 신청 현황·포인트·설문). 비교과 사이트에 로그인해 있어야 한다
+  let mine = null; // { ok, data: {points, programs, surveys}, fetchedAt, error }
+  let mineLoading = false;
+  async function loadMine({ force = false } = {}) {
+    mineLoading = true;
+    rerender();
+    try {
+      const { cache, hsportal } = await mods;
+      const r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force });
+      mine = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
+    } catch (err) {
+      if (isDeadContext(err)) return onDeadContext();
+      if (err?.name !== "LoginRequiredError") console.warn("[HSU PLUS] 내 비교과 불러오기 실패:", err);
+      mine = { ok: false, error: plainErr(err) };
+    }
+    mineLoading = false;
     rerender();
   }
 
@@ -695,7 +722,20 @@
 
   const byDue = (a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15);
 
-  // 비교과 한 줄
+  // ---------- 비교과 탭: 액자 하나 + 위쪽 선택(신청 / 내 비교과) ----------
+  //  신청      = 1주일 안에 신청 마감인 접수중 비교과 (세부 분류는 나중에)
+  //  내 비교과 = 졸업 인정 포인트 / 800, 시작 대기, 진행 중, 설문을 아직 안 낸 종료 프로그램(종료 목록 1쪽),
+  //              맨 아래 온라인(LMS에서 기간 안에 듣는 형식)은 기간만
+  // 일정 종류(adapters/hsportal.js scheduleKind): exact(며칠 몇 시) / online / open(기간만, 세부 일정 따로)
+  //  → exact만 날짜·시각과 D-day를 크게 보여주고 캘린더에 올린다
+  const GRAD_POINTS = 800; // 졸업 요건 비교과 포인트 (사용자 확인, 학과·학번마다 다를 수 있음)
+  const PKINDS = [
+    { id: "apply", label: "신청" },
+    { id: "mine", label: "내 비교과" },
+  ];
+  let progKind = "apply";
+
+  // 비교과 한 줄 (신청)
   function programRow(it) {
     const m = it.meta || {};
     const seats = m.capacity ? `${m.applied ?? "?"}/${m.capacity}명${m.full ? " · 정원 마감" : ""}` : m.applied != null ? `${m.applied}명 신청` : "";
@@ -708,28 +748,192 @@
     ]);
   }
 
-  // ---------- 비교과 탭: 1주일 안에 신청 마감 ----------
-  function renderPrograms() {
-    const head = el("div", { class: "section-head" }, [
-      el("span", { class: "title", text: "1주일 안에 신청 마감" }),
-      el("span", { class: "meta", text: programsLoading ? "불러오는 중…" : ago(programs?.fetchedAt) }),
-      el("button", { class: "small", text: "새로고침", disabled: programsLoading ? "" : null, onclick: () => loadPrograms({ force: true }) }),
+  const dayLabel = (d) => `${md(d)}(${DAY[d.getDay()]})`;
+  const endLabel = (iso) => {
+    const d = new Date(iso);
+    return isMidnight(d) ? `${dayLabel(dueDay(iso))} 24:00` : `${dayLabel(d)} ${hm(d)}`;
+  };
+  const periodText = (s) => (s.end ? `${dayLabel(new Date(s.start))} ~ ${endLabel(s.end)}` : `${dayLabel(new Date(s.start))}부터`);
+  const exactSessions = (p) => p.sessions.filter((s) => s.kind === "exact");
+  // 카드 기준 회차: 날짜·시각이 정해진 다음 회차, 없으면 첫 회차
+  const nextSession = (p) => exactSessions(p)[0] || p.sessions[0];
+  const isOnlineOnly = (p) => p.sessions.every((s) => s.kind === "online");
+
+  // 아래 띠 왼쪽: 일정
+  function scheduleLine(p) {
+    const s = nextSession(p);
+    if (s.kind === "exact") {
+      const st = new Date(s.start);
+      const days = daysLeft(s.start);
+      const more = exactSessions(p).length - 1;
+      return el("span", { class: "dline" }, [
+        icon("clock"),
+        el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(s.start)}`, text: days <= 0 ? "오늘" : `D-${days}` }),
+        el("span", { class: "when", text: `${dayLabel(st)} ${hm(st)}–${hm(new Date(s.end))}${more > 0 ? ` 외 ${more}회` : ""}` }),
+      ]);
+    }
+    return el("span", { class: "dline" }, [icon("clock"), el("span", { class: "dchip", text: "일정 미정", title: "기간만 공지돼 있고 세부 일정은 따로 안내돼요 (추후 공지, 회차마다 다름 등)" }), el("span", { class: "when", text: periodText(s) })]);
+  }
+
+  function myProgramCard(p) {
+    const s = nextSession(p);
+    const tier = s.kind === "exact" ? riskTier(s.start) : 5;
+    const state = p.phase === "wait" ? (p.status && p.status !== "참여승인" ? p.status : "시작 대기") : "진행 중";
+    return el("a", { class: `tcard r${tier}`, href: p.url, target: "_blank", rel: "noopener", title: s.name && s.name !== p.title ? s.name : null }, [
+      el("div", { class: "tc-main" }, [
+        el("div", { class: "info" }, [
+          el("div", { class: "tc-title", text: p.title }),
+          el("div", { class: "tc-sub", text: [p.category, p.place || p.department].filter(Boolean).join(" · ") }),
+        ]),
+      ]),
+      el("div", { class: "tc-foot" }, [scheduleLine(p), el("span", { class: "tc-status plain", text: state })]),
     ]);
-    if (!programs) {
-      content.replaceChildren(head, el("p", { class: "placeholder", text: "불러오는 중…" }));
-      return;
+  }
+
+  function surveyCard(p) {
+    const done = /이수\d/.test(p.issuance) ? `이수 ${p.issuance.replace(/^이수\s*\d{4}-0?(\d+)-0?(\d+).*/, "$1/$2")}` : p.issuance;
+    return el("a", { class: "tcard r2", href: p.listUrl, target: "_blank", rel: "noopener", title: "종료된 프로그램 목록에서 설문조사 버튼을 눌러 작성해요" }, [
+      el("div", { class: "tc-main" }, [
+        el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [p.category, done].filter(Boolean).join(" · ") })]),
+      ]),
+      el("div", { class: "tc-foot" }, [
+        el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}점 프로그램` : "종료된 프로그램" })]),
+        el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: "설문 필요" })]),
+      ]),
+    ]);
+  }
+
+  // 온라인: 기간만, 작게
+  function onlineRow(p) {
+    const s = p.sessions[0];
+    return el("a", { class: "todo quiet", href: p.url, target: "_blank", rel: "noopener" }, [
+      el("div", { class: "info" }, [el("div", { class: "name", text: p.title }), el("div", { class: "sub", text: `${periodText(s)}${p.phase === "wait" ? " · 시작 대기" : ""}` })]),
+    ]);
+  }
+
+  // 졸업 인정 포인트 / 800
+  function pointCard(pt) {
+    const have = pt.graduation ?? pt.total ?? 0;
+    const left = Math.max(0, GRAD_POINTS - have);
+    const done = left === 0;
+    const bar = el("div", { class: "pt-bar" }, [el("div", { class: done ? "pt-fill done" : "pt-fill" })]);
+    bar.firstChild.style.width = `${Math.min(100, (have / GRAD_POINTS) * 100)}%`;
+    return el("div", { class: "pt-card" }, [
+      el("div", { class: "pt-top" }, [
+        el("div", {}, [
+          el("div", { class: "pt-label", text: "졸업 인정 비교과 포인트" }),
+          el("div", { class: "pt-num" }, [el("b", { text: String(have) }), el("span", { text: ` / ${GRAD_POINTS}점` })]),
+        ]),
+        el("div", { class: done ? "pt-left done" : "pt-left" }, done ? [el("b", { text: "졸업 요건 달성" })] : [el("span", { text: "졸업까지" }), el("b", { text: `${left}점` })]),
+      ]),
+      bar,
+      el("div", { class: "pt-foot", text: [pt.semester != null ? `이번 학기 +${pt.semester}점` : "", pt.total != null ? `전체 누적 ${pt.total}점` : ""].filter(Boolean).join(" · ") }),
+    ]);
+  }
+
+  const secTitle = (title, n, note) => el("div", { class: "sec-title" }, [el("span", { text: title }), n != null ? el("span", { class: "n", text: String(n) }) : null, note ? el("span", { class: "note", text: note }) : null]);
+  const byNext = (a, b) => new Date(nextSession(a).start) - new Date(nextSession(b).start);
+
+  function mineGroups() {
+    const ps = mine?.ok ? mine.data.programs : [];
+    const online = ps.filter(isOnlineOnly);
+    const rest = ps.filter((p) => !isOnlineOnly(p));
+    return {
+      surveys: mine?.ok ? mine.data.surveys : [],
+      wait: rest.filter((p) => p.phase === "wait").sort(byNext),
+      progress: rest.filter((p) => p.phase === "progress").sort(byNext),
+      online: online.sort((a, b) => new Date(a.sessions[0].end || 8.64e15) - new Date(b.sessions[0].end || 8.64e15)),
+    };
+  }
+
+  function renderMine() {
+    if (!mine) return [placeholder("신청한 비교과와 포인트를 확인하고 있어요…")];
+    if (!mine.ok) {
+      const e = mine.error || {};
+      return [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }))];
     }
-    if (!programs.ok) {
-      content.replaceChildren(head, failCard(programs.error?.message));
-      return;
-    }
+    const g = mineGroups();
+    const parts = [];
+    if (mine.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+    parts.push(el("div", { class: "pad" }, [pointCard(mine.data.points || {})]));
+    if (g.surveys.length) parts.push(secTitle("설문 필요", g.surveys.length, "종료된 프로그램"), rows(g.surveys.map(surveyCard)));
+    parts.push(secTitle("시작 대기", g.wait.length), g.wait.length ? rows(g.wait.map(myProgramCard)) : placeholder("시작을 기다리는 비교과가 없어요."));
+    parts.push(secTitle("진행 중", g.progress.length), g.progress.length ? rows(g.progress.map(myProgramCard)) : placeholder("진행 중인 비교과가 없어요."));
+    if (g.online.length) parts.push(secTitle("온라인", g.online.length, "기간 안에 참여"), rows(g.online.map(onlineRow)));
+    return parts;
+  }
+
+  function renderPrograms() {
+    const loadingAny = programsLoading || mineLoading;
+    const fetchedAt = progKind === "mine" ? mine?.fetchedAt : programs?.fetchedAt;
+    const head = el("div", { class: "section-head" }, [
+      el("span", { class: "meta", text: loadingAny ? "불러오는 중…" : fetchedAt ? `비교과 ${ago(fetchedAt)}` : "" }),
+      el("button", {
+        class: "small",
+        text: "새로고침",
+        disabled: loadingAny ? "" : null,
+        onclick: () => {
+          loadPrograms({ force: true });
+          loadMine({ force: true });
+        },
+      }),
+    ]);
+
     const now = Date.now();
-    const soon = programs.data.filter((it) => it.due && new Date(it.due).getTime() >= now && new Date(it.due).getTime() <= now + 7 * 86400000);
-    const parts = [head];
-    if (programs.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
-    if (!soon.length) parts.push(placeholder("1주일 안에 신청이 마감되는 비교과가 없어요."));
-    else parts.push(rows(soon.map(programRow)));
-    content.replaceChildren(...parts);
+    const soon = programs?.ok ? programs.data.filter((it) => it.due && new Date(it.due).getTime() >= now && new Date(it.due).getTime() <= now + 7 * 86400000) : null;
+    const g = mine?.ok ? mineGroups() : null;
+    const counts = {
+      apply: soon ? soon.length : null,
+      mine: g ? g.surveys.length + g.wait.length + g.progress.length + g.online.length : null,
+    };
+    const hot = {
+      apply: !!soon?.some((it) => isUrgent(it.due)),
+      // 설문을 안 낸 게 있거나, 날짜가 정해진 회차가 이틀 안이면 빨간 점
+      mine: !!g && (g.surveys.length > 0 || [...g.wait, ...g.progress].some((p) => exactSessions(p).some((s) => isUrgent(s.start)))),
+    };
+    const seg = el(
+      "div",
+      { class: "seg", role: "tablist" },
+      PKINDS.map((k) =>
+        el(
+          "button",
+          {
+            class: k.id === progKind ? "seg-btn active" : "seg-btn",
+            role: "tab",
+            "aria-selected": String(k.id === progKind),
+            onclick: () => {
+              progKind = k.id;
+              renderPrograms();
+            },
+          },
+          [
+            el("span", { class: "lbl" }, [el("span", { text: k.label }), hot[k.id] ? el("span", { class: "dot", "aria-label": "확인 필요" }) : null]),
+            counts[k.id] != null ? el("span", { class: "n", text: String(counts[k.id]) }) : null,
+          ]
+        )
+      )
+    );
+
+    let bodyParts;
+    if (progKind === "mine") bodyParts = renderMine();
+    else if (!programs) bodyParts = [placeholder("불러오는 중…")];
+    else if (!programs.ok) bodyParts = [failCard(programs.error?.message, () => loadPrograms({ force: true }))];
+    else {
+      bodyParts = [secTitle("1주일 안에 신청 마감", soon.length)];
+      if (programs.error) bodyParts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      bodyParts.push(soon.length ? rows(soon.map(programRow)) : placeholder("1주일 안에 신청이 마감되는 비교과가 없어요."));
+    }
+    content.replaceChildren(head, el("div", { class: "frame prog" }, [seg, el("div", { class: "frame-body" }, bodyParts)]));
+  }
+
+  // 캘린더에 올릴 내 비교과 회차: 날짜·시각이 정해진 것(exact)만
+  function programSessionsIn(start, end) {
+    if (!mine?.ok) return [];
+    return mine.data.programs.flatMap((p) =>
+      exactSessions(p)
+        .filter((s) => new Date(s.start) >= start && new Date(s.start) < end)
+        .map((s) => ({ start: s.start, end: s.end, title: p.title, session: s.name, place: p.place, url: p.url, isProgram: true }))
+    );
   }
 
   // ---------- 연결 상태 (접어 두는 진단 칸) ----------
@@ -778,6 +982,7 @@
       loadWeek(); // 캐시가 유효하면 바로 뜨고, 아니면 새로 받아 온다
       loadEclass();
       loadPrograms();
+      loadMine();
       checkStatus();
     }
   }

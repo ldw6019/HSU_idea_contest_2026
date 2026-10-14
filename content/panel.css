@@ -306,3 +306,43 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 .tc-alert .msg { font-size: 12.5px; font-weight: 700; }
 .tc-alert .nums { margin-top: 2px; font-size: 12px; color: #b42318; font-variant-numeric: tabular-nums; }
 .sub-item .sub.alert { color: #b42318; font-weight: 600; }
+
+/* ---------- 비교과 탭: 신청 / 내 비교과 ---------- */
+/* 신청 목록은 포인트 배지를 보여준다 (이번 주 액자에서는 숨김) */
+.frame.prog .todo .badge { display: inline-block; }
+.frame.prog .todos { padding-top: 4px; }
+/* 액자 안 작은 제목: "시작 대기 2" */
+.sec-title { display: flex; align-items: baseline; gap: 6px; padding: 12px 14px 0; font-size: 12.5px; font-weight: 700; color: var(--ot-sub); }
+.sec-title .n { color: var(--ot-primary); font-variant-numeric: tabular-nums; }
+.sec-title .note { margin-left: auto; font-weight: 500; color: var(--ot-muted); font-size: 11.5px; }
+.frame-body > .sec-title + .placeholder { padding: 8px 14px 4px; text-align: left; font-size: 12.5px; }
+.frame-body > .pad { padding: 10px 10px 0; }
+.tc-status.plain { color: var(--ot-sub); font-weight: 600; }
+/* 온라인(기간 안에 참여): 중요도 낮아 작고 옅게 */
+.frame .todos > .todo.quiet { padding: 8px 12px; background: #fbfcfd; }
+.todo.quiet .name { font-weight: 500; font-size: 13px; color: var(--ot-text); }
+
+/* 졸업 인정 포인트 카드 */
+.pt-card { background: #fff; border-radius: 12px; padding: 12px 14px; box-shadow: 0 1px 3px rgba(16, 24, 40, 0.08); }
+.pt-top { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
+.pt-label { font-size: 12px; color: var(--ot-sub); font-weight: 600; }
+.pt-num { margin-top: 2px; font-variant-numeric: tabular-nums; color: var(--ot-sub); font-size: 13px; }
+.pt-num b { font-size: 24px; font-weight: 800; color: var(--ot-text); letter-spacing: -0.5px; }
+.pt-left { display: flex; flex-direction: column; align-items: flex-end; font-size: 11.5px; color: var(--ot-sub); }
+.pt-left b { font-size: 16px; font-weight: 800; color: var(--ot-primary); font-variant-numeric: tabular-nums; }
+.pt-left.done b { font-size: 13px; color: #fff; background: linear-gradient(90deg, #2fe07a, #0fbf55); padding: 3px 9px; border-radius: 6px; }
+.pt-bar { margin-top: 8px; height: 8px; border-radius: 999px; background: #e7ecf4; overflow: hidden; }
+/* 진행 중은 학교 파랑, 다 채우면(완료) 초록 */
+.pt-fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #5b8def, var(--ot-primary)); }
+.pt-fill.done { background: linear-gradient(90deg, #2fe07a, #0fbf55); }
+.pt-foot { margin-top: 6px; font-size: 11.5px; color: var(--ot-muted); font-variant-numeric: tabular-nums; }
+
+/* 캘린더: 날짜·시각이 정해진 내 비교과 = 흰 칸 + 학교 파랑 테두리 (수업 색과 겹치지 않게) */
+.tt-block.prog {
+  background: #fff; color: var(--ot-primary-dark); border: 1.5px solid var(--ot-primary);
+  text-decoration: none; box-shadow: 0 1px 3px rgba(11, 78, 162, 0.18);
+}
+.tt-block.prog .tt-place { color: var(--ot-sub); }
+.tt-tag { display: inline-block; font-size: 9.5px; font-weight: 800; color: #fff; background: var(--ot-primary); border-radius: 3px; padding: 0 3px; margin-bottom: 1px; }
+.tt-legend { margin: 0 0 6px; font-size: 11.5px; color: var(--ot-muted); }
+.dchip { white-space: nowrap; }

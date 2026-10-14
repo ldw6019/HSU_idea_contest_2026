@@ -8,6 +8,7 @@ export const TTL = Object.freeze({
   TIMETABLE: 24 * 60 * 60 * 1000, // 시간표: 하루 (학기 중 거의 안 바뀜)
   ECLASS: 30 * 60 * 1000, // e클래스 과제·영상: 30분 (제출하면 바로 바뀜)
   PROGRAMS: 3 * 60 * 60 * 1000, // 비교과 목록: 3시간
+  MYPROGRAMS: 60 * 60 * 1000, // 내 비교과(신청 현황·포인트·설문): 1시간
 });
 
 /** 저장된 값 꺼내기. 없으면 null. { data, fetchedAt } */
