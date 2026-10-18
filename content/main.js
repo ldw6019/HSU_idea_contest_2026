@@ -324,6 +324,19 @@
   // 월간: 수업은 빼고(매주 같아서) 비교과·마감·직접 넣은 일정만.
   // 날짜를 누르면 그날 목록이 아래에 열리고, 일정마다 "구글 캘린더에 추가"가 있다.
   const ymd = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  /**
+   * 캘린더 칸에 넣을 짧은 이름 (10/20 사용자: "10:00 2026-…"처럼 잘려서 뭔지 모름)
+   * "2026-2학기 집단상담 프로그램" → "집단상담", "[재맞고]26-2학기 AI 실무…" → "AI 실무…", "2026학년도 2학기 학습법 워크숍" → "학습법 워크숍"
+   * 학기·연도 머리말, 맨 앞 [머리표], 끝의 "프로그램"만 뗀다. 원래 이름은 마우스를 올리거나 그날 목록에서 보인다.
+   */
+  function shortTitle(t) {
+    const orig = String(t || "").trim();
+    let s = orig.replace(/^(\[[^\]]{1,12}\]\s*)+/, "");
+    s = s.replace(/^(20)?\d{2}\s*(학년도|년도|년)?\s*(\s*[-–.]\s*[12]|\s*(제)?\s*[12]\s*학기|\s*(하계|동계)(\s*방중)?)?\s*(학기)?\s*\)?\s*/, (m) => (/\d{2}/.test(m) ? "" : m));
+    s = s.replace(/^[12]\s*학기\s*/, "");
+    s = s.replace(/\s*프로그램$/, "");
+    return s.length >= 2 ? s : orig;
+  }
   const fromYmd = (s, t = "00:00") => {
     const [y, m, dd] = s.split("-").map(Number);
     const [h, mi] = t.split(":").map(Number);
@@ -790,7 +803,7 @@
         const first = dues.map((x) => x.due).sort()[0];
         pills.push(el("span", { class: `ad-pill due r${riskTier(first)}${dayStart(d) < dayStart(now) ? " past" : ""}`, title: dues.map((x) => `${x.title} (${x.sub})`).join("\n"), text: `마감 ${dues.length}` }));
       }
-      for (const x of others.slice(0, dues.length ? 1 : 2)) pills.push(el("span", { class: `ad-pill k-${x.kind}`, title: x.title, text: x.title }));
+      for (const x of others.slice(0, dues.length ? 1 : 2)) pills.push(el("span", { class: `ad-pill k-${x.kind}`, title: x.title, text: shortTitle(x.title) }));
       const more = others.length - (dues.length ? 1 : 2);
       if (more > 0) pills.push(el("span", { class: "ad-more", text: `+${more}` }));
       grid.appendChild(
@@ -842,7 +855,7 @@
             rel: isLink ? "noopener" : null,
             onclick: x.kind === "ev" ? () => editEvent(x.id) : null,
           },
-          [tag ? el("div", { class: "tt-tag", text: tag }) : null, el("div", { class: "tt-name", text: x.title }), x.place ? el("div", { class: "tt-place", text: x.place }) : null]
+          [tag ? el("div", { class: "tt-tag", text: tag }) : null, el("div", { class: "tt-name", text: x.kind === "class" ? x.title : shortTitle(x.title) }), x.place ? el("div", { class: "tt-place", text: x.place }) : null]
         );
         block.style.top = top + "px";
         block.style.height = height - 2 + "px";
@@ -935,15 +948,19 @@
       const list = [...allDayOf(dd, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, dd))];
       const dues = list.filter((x) => x.kind === "due");
       const others = list.filter((x) => x.kind !== "due").sort((a, b) => a.start - b.start);
-      const pills = others.slice(0, dues.length ? 2 : 3).map((x) => el("span", { class: `mon-pill k-${x.kind}`, text: `${x.allDay ? "" : hm(x.start) + " "}${x.title}` }));
-      if (dues.length) pills.push(el("span", { class: `mon-pill due r${riskTier(dues.map((x) => x.due).sort()[0])}`, text: `마감 ${dues.length}` }));
+      // 칸이 좁아서 이름은 짧게(학기·연도 머리말 뗌), 시각은 넓게 보기에서만. 원래 이름·시각은 마우스 올리기와 그날 목록에서
+      const pills = others.slice(0, dues.length ? 2 : 3).map((x) =>
+        el("span", { class: `mon-pill k-${x.kind}` }, [x.allDay ? null : el("span", { class: "tm", text: hm(x.start) }), el("span", { class: "nm", text: shortTitle(x.title) })])
+      );
+      if (dues.length) pills.push(el("span", { class: `mon-pill due r${riskTier(dues.map((x) => x.due).sort()[0])}` }, [el("span", { class: "nm", text: `마감 ${dues.length}` })]));
       const more = others.length - (dues.length ? 2 : 3);
       if (more > 0) pills.push(el("span", { class: "ad-more", text: `+${more}` }));
       grid.appendChild(
         el(
           "button",
           {
-            class: ["mon-cell", dd.getMonth() !== m - 1 ? "out" : "", sameDay(dd, now) ? "today" : "", calDay === ymd(dd) ? "picked" : "", dd.getDay() === 0 || dd.getDay() === 6 ? "wkend" : ""].filter(Boolean).join(" "),
+            class: ["mon-cell", dd.getMonth() !== m - 1 ? "out" : "", sameDay(dd, now) ? "today" : "", dayStart(dd) < dayStart(now) ? "past" : "", calDay === ymd(dd) ? "picked" : "", dd.getDay() === 0 || dd.getDay() === 6 ? "wkend" : ""].filter(Boolean).join(" "),
+            title: list.length ? list.map((x) => `${x.kind === "due" ? "[마감] " : x.allDay ? "" : hm(x.start) + " "}${x.title}`).join("\n") : null,
             onclick: () => {
               calDay = calDay === ymd(dd) ? null : ymd(dd);
               renderCalendar();
@@ -954,7 +971,11 @@
       );
     }
     parts.push(grid);
-    parts.push(el("div", { class: "cal-foot" }, [el("span", { class: "tt-legend", text: "수업은 주간에서 · 파랑 내 비교과 · 보라 직접 넣은 일정 · 마감 = 과제·퀴즈·강의" })]));
+    parts.push(
+      el("div", { class: "cal-foot" }, [
+        el("span", { class: "tt-legend", text: `수업은 주간에서 · 파랑 내 비교과 · 보라 직접 넣은 일정 · 마감 = 과제·퀴즈·강의${panel.classList.contains("wide") ? "" : " · 이름이 잘리면 날짜를 누르거나 '넓게 보기'"}` }),
+      ])
+    );
     if (calDay) {
       const d = fromYmd(calDay);
       parts.push(dayDetail(calDay, [...allDayOf(d, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, d))]));

@@ -616,3 +616,35 @@ button.tt-day.today { color: var(--ot-primary); }
 .pt-elite .pt-hrow { border-top-color: rgba(255, 255, 255, 0.12); }
 .pt-elite .pt-hrow .d { color: rgba(255, 255, 255, 0.6); }
 .pt-elite .pt-hrow b { color: #cfe0ff; }
+
+/* ---------- 다듬기 (10/20): e클래스에 녹아들게, 크게 바꾸지 않고 ---------- */
+/* 월간 칸 이름: 짧은 이름 한 줄, 시각은 넓게 보기에서만 */
+.mon-pill { display: flex; align-items: baseline; gap: 3px; text-align: left; font-size: 10px; line-height: 1.5; padding: 0 4px; }
+.mon-pill .tm { display: none; flex: none; font-weight: 500; opacity: 0.75; font-variant-numeric: tabular-nums; }
+.mon-pill .nm { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.panel.wide .mon-pill .tm { display: inline; }
+.mon-pill.due { justify-content: flex-start; }
+.mon-cell.past:not(.out) .mon-pill { opacity: 0.6; }
+.mon-cell.past:not(.today) .mon-num { color: var(--ot-muted); }
+/* 주간 칸 이름이 블록 높이를 넘으면 말줄임 대신 잘리던 것 → 줄 수 제한 */
+.tt-name { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+
+/* 연결 상태: 진단용이라 눈에 덜 띄게 (테두리 없이 작은 글씨) */
+.status-box { border: none; border-top: 1px solid var(--ot-line); border-radius: 0; padding: 10px 2px 0; }
+.status-box summary { font-weight: 600; font-size: 12px; color: var(--ot-muted); }
+.status-box[open] summary { color: var(--ot-sub); }
+
+/* 키보드로 움직일 때만 보이는 초점 테두리 */
+button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visible { outline: 2px solid #9db8e6; outline-offset: 1px; }
+/* 패널 스크롤바: e클래스 화면처럼 얇게 */
+.body { scrollbar-width: thin; scrollbar-color: #cfd5e0 transparent; }
+/* 숫자는 고정폭 (날짜·시각·개수 줄이 흔들리지 않게) */
+.when, .dchip, .seg-btn .n, .tt-hour, .mon-num { font-variant-numeric: tabular-nums; }
+/* 월간 칸 이름은 두 줄까지 (한 줄 말줄임이면 "집단…"처럼 뭔지 모름), 시각은 넓게 보기에서 이름 위 작은 줄 */
+.mon-pill { display: block; padding: 1px 4px; }
+.mon-pill .tm { font-size: 9px; line-height: 1.3; }
+.panel.wide .mon-pill .tm { display: block; }
+.mon-pill .nm { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; white-space: normal; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.3; }
+.mon-pill.due .nm { -webkit-line-clamp: 1; }
+.mon-pill.due { padding: 1px 3px; }
+.mon-pill.due .nm { display: block; white-space: nowrap; overflow: hidden; text-overflow: clip; letter-spacing: -0.3px; }
