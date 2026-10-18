@@ -409,3 +409,13 @@ a.tcard:hover { box-shadow: 0 3px 10px rgba(16, 24, 40, 0.12); }
 .hidden-list { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
 .hidden-row { display: flex; align-items: center; gap: 8px; padding: 6px 10px; background: #fff; border-radius: 8px; font-size: 12.5px; color: var(--ot-sub); }
 .hidden-row .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ---------- 캘린더: 이번 주 / 다음 주, 토·일 접기 (10/18) ---------- */
+.seg-mini-wrap { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--ot-soft); border: 1px solid var(--ot-line); }
+.seg-mini { border: none; background: transparent; border-radius: 6px; padding: 3px 8px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ot-sub); cursor: pointer; }
+.seg-mini.active { background: #fff; color: var(--ot-primary); box-shadow: 0 1px 2px rgba(16, 24, 40, 0.1); }
+.weekend-toggle {
+  align-self: flex-end; margin-top: 6px; border: none; background: none; padding: 2px 4px;
+  font: inherit; font-size: 12px; color: var(--ot-sub); cursor: pointer; text-decoration: underline;
+}
+.section-head .meta { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }

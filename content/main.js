@@ -185,13 +185,22 @@
     if (current === "calendar") renderCalendar();
   }
 
-  /** 이번 주 범위 안의 항목만 시간순으로 */
-  function weekItems() {
-    const { start, end } = weekRange();
+  /**
+   * 시간표를 보여줄 주(월요일 시작)에 맞춰 놓는다.
+   * 종합정보 시간표는 학교 화면처럼 "일요일 시작" 주를 돌려줘서, 일요일에 받으면 다음 주 날짜가 온다(10/18 확인).
+   * 그래서 날짜 대신 "요일 + 시각"으로 보여줄 주에 다시 놓는다 (수업은 매주 같은 시간이라 가능).
+   */
+  function weekItems(monday = weekRange().start) {
     return (week?.items || [])
-      .filter((it) => {
-        const t = new Date(it.start);
-        return t >= start && t < end;
+      .map((it) => {
+        const s = new Date(it.start);
+        const e = new Date(it.end || it.start);
+        const off = (s.getDay() + 6) % 7; // 월=0 … 일=6
+        const start = new Date(monday);
+        start.setDate(start.getDate() + off);
+        start.setHours(s.getHours(), s.getMinutes(), 0, 0);
+        const end = new Date(start.getTime() + (e - s));
+        return { ...it, start: start.toISOString(), end: end.toISOString() };
       })
       .sort((a, b) => new Date(a.start) - new Date(b.start));
   }
@@ -245,10 +254,27 @@
   colorsReady.then(() => rerender());
   const minutesOf = (d) => d.getHours() * 60 + d.getMinutes();
 
+  // 보여줄 주: 평일엔 이번 주, 토·일엔 다음 주가 기본 (주말엔 이번 주가 거의 끝났으니까). 위 버튼으로 바꿀 수 있음
+  // 토·일 칸: 기본은 접어 두고, 그 주말에 일정(비교과·직접 넣은 일정)이 있으면 펼쳐서 보여 준다
+  let calWeek = null; // 0 = 이번 주, 1 = 다음 주 (null이면 요일에 따라 자동)
+  let calWeekendOpen = null; // null이면 주말 일정이 있을 때만 펼침
   function renderCalendar() {
+    const today = new Date();
+    const offset = calWeek ?? (today.getDay() === 0 || today.getDay() === 6 ? 1 : 0);
+    const weekBtn = (n, label) =>
+      el("button", {
+        class: offset === n ? "seg-mini active" : "seg-mini",
+        text: label,
+        onclick: () => {
+          calWeek = n;
+          calWeekendOpen = null;
+          renderCalendar();
+        },
+      });
     const head = el("div", { class: "section-head" }, [
-      el("span", { class: "title", text: "이번 주 시간표" }),
+      el("span", { class: "title", text: offset ? "다음 주 시간표" : "이번 주 시간표" }),
       el("span", { class: "meta", text: loading ? "불러오는 중…" : ago(week?.fetchedAt) }),
+      el("div", { class: "seg-mini-wrap" }, [weekBtn(0, "이번 주"), weekBtn(1, "다음 주")]),
       el("button", { class: "small", text: "새로고침", disabled: loading ? "" : null, onclick: () => loadWeek({ force: true }) }),
     ]);
 
@@ -262,15 +288,19 @@
       return;
     }
 
-    const { start: monday, end: sunday } = weekRange();
+    const monday = weekRange().start;
+    monday.setDate(monday.getDate() + 7 * offset);
+    const sunday = new Date(monday);
+    sunday.setDate(sunday.getDate() + 7);
     // 수업 + 날짜·시각이 정해진 내 비교과 회차 (기간만 있는 비교과는 올리지 않는다)
-    const items = [...weekItems(), ...programSessionsIn(monday, sunday)];
+    const items = [...weekItems(monday), ...programSessionsIn(monday, sunday)];
     const now = new Date();
 
-    // 보여줄 요일: 월~금 기본, 토·일은 수업이 있을 때만
+    // 보여줄 요일: 월~금 기본. 토·일은 접어 두고, 그 주말에 일정이 있으면 펼침 (버튼으로 직접 열고 닫기)
     const dayIdx = (d) => (d.getDay() + 6) % 7; // 월=0 … 일=6
-    const used = new Set(items.map((it) => dayIdx(new Date(it.start))));
-    const cols = [0, 1, 2, 3, 4].concat([5, 6].filter((i) => used.has(i)));
+    const weekendCount = items.filter((it) => dayIdx(new Date(it.start)) >= 5).length;
+    const weekendOpen = calWeekendOpen ?? weekendCount > 0;
+    const cols = [0, 1, 2, 3, 4].concat(weekendOpen ? [5, 6] : []);
 
     // 보여줄 시간 범위: 기본 9~18시, 수업이 더 이르거나 늦으면 넓힌다
     let minH = 9;
@@ -342,9 +372,19 @@
 
     const parts = [head];
     if (week.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
-    if (!items.length) parts.push(el("p", { class: "placeholder", text: "이번 주 수업이 없어요." }));
+    if (!items.length) parts.push(el("p", { class: "placeholder", text: offset ? "다음 주 수업이 없어요." : "이번 주 수업이 없어요." }));
     else if (items.some((it) => it.isProgram)) parts.push(el("p", { class: "tt-legend", text: "흰 칸 = 날짜·시각이 정해진 내 비교과 (기간만 있는 비교과는 비교과 탭에서)" }));
     parts.push(grid);
+    parts.push(
+      el("button", {
+        class: "weekend-toggle",
+        text: weekendOpen ? "토·일 접기" : `토·일 펼치기${weekendCount ? ` (일정 ${weekendCount})` : ""}`,
+        onclick: () => {
+          calWeekendOpen = !weekendOpen;
+          renderCalendar();
+        },
+      })
+    );
     content.replaceChildren(...parts);
   }
 
