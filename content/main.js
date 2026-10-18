@@ -212,6 +212,71 @@
   // 처음 보는 과목은 이미 쓴 색과 가장 먼 칸 중에서 무작위로 고르고, 저장해 두어 다음에도 같은 색이 나온다.
   // 과목 색은 캘린더 블록에만 쓴다 (할 일 카드에 배경색을 넣어 봤더니 정신없어서 뺐음, 10/10)
   const COLOR_SLOTS = 18;
+  // ---------- 내 설정 저장: 같은 구글 계정으로 로그인한 크롬끼리 똑같이 보이게 (10/18) ----------
+  // 과목 색·숨긴 항목·(나중에) 직접 넣은 일정처럼 "내가 정한 것"은 chrome.storage.sync에 둔다.
+  // 학교에서 불러온 데이터(캐시)는 기기마다 다시 불러오면 되니 local 그대로.
+  // 항목 하나 = sync 키 하나 ("hide|항목id": 숨긴 시각). 두 기기에서 따로 바꿔도 키마다 합쳐져서 서로 덮어쓰지 않는다.
+  // sync 한도: 키 512개, 전체 100KB, 분당 쓰기 120회 → 바뀐 것을 모아 0.5초 뒤 한 번에 쓴다.
+  // 크롬에 로그인 안 했거나 동기화를 꺼 두면 sync도 이 브라우저에만 남는다(나중에 켜면 그때 합쳐짐).
+  const pending = { set: {}, remove: new Set() };
+  let flushTimer = null;
+  function flushUser() {
+    flushTimer = null;
+    const set = pending.set;
+    const remove = [...pending.remove];
+    pending.set = {};
+    pending.remove = new Set();
+    try {
+      if (Object.keys(set).length) chrome.storage.sync.set(set).catch((e) => console.warn("[HSU PLUS] 설정 저장 실패", e));
+      if (remove.length) chrome.storage.sync.remove(remove).catch(() => {});
+    } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
+  }
+  /** 내 설정 묶음(ns) 전체 읽기 → { id: 값 }. legacyKey: 예전 버전이 이 브라우저에만 저장하던 키 (한 번 옮기고 지움) */
+  async function userMap(ns, legacyKey) {
+    const out = {};
+    try {
+      const all = await chrome.storage.sync.get(null);
+      for (const [k, v] of Object.entries(all)) if (k.startsWith(`${ns}|`)) out[k.slice(ns.length + 1)] = v;
+    } catch {}
+    if (legacyKey) {
+      try {
+        const old = (await chrome.storage.local.get(legacyKey))[legacyKey];
+        if (old && typeof old === "object") {
+          for (const [id, v] of Object.entries(old)) if (!(id in out)) userPut(ns, id, (out[id] = v));
+          chrome.storage.local.remove(legacyKey).catch(() => {});
+        }
+      } catch {}
+    }
+    return out;
+  }
+  /** 항목 하나 저장 (value가 null이면 지움) */
+  function userPut(ns, id, value) {
+    const k = `${ns}|${id}`;
+    if (value == null) {
+      delete pending.set[k];
+      pending.remove.add(k);
+    } else {
+      pending.remove.delete(k);
+      pending.set[k] = value;
+    }
+    if (!flushTimer) flushTimer = setTimeout(flushUser, 500);
+  }
+  /** 다른 기기에서 바꾼 것이 도착하면 열린 화면도 맞춘다: fn(id, 새 값 | undefined) */
+  function onUserChange(ns, fn) {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "sync") return;
+        let hit = false;
+        for (const [k, c] of Object.entries(changes)) {
+          if (!k.startsWith(`${ns}|`)) continue;
+          fn(k.slice(ns.length + 1), c.newValue);
+          hit = true;
+        }
+        if (hit) rerender();
+      });
+    } catch {}
+  }
+
   const COLOR_KEY = "ui:courseColors";
   // 마감 임박 빨강(약 358°)과 헷갈리지 않게 빨강 근처(338°~22°)는 비우고, 나머지에 18칸을 고르게 놓는다
   const slotHue = (slot) => Math.round(22 + (slot * 316) / (COLOR_SLOTS - 1));
@@ -224,10 +289,12 @@
   const courseKey = (name) => String(name || "").normalize("NFC").replace(/[[(][^\])]*[\])]/g, "").replace(/\s+/g, "").toLowerCase();
 
   let courseColors = null; // { 과목키: 칸 번호 }
-  const colorsReady = chrome.storage.local
-    .get(COLOR_KEY)
-    .then((r) => (courseColors = r[COLOR_KEY] || {}))
-    .catch(() => (courseColors = {}));
+  const colorsReady = userMap("color", COLOR_KEY).then((v) => (courseColors = v));
+  onUserChange("color", (id, v) => {
+    if (!courseColors) return;
+    if (v == null) delete courseColors[id];
+    else courseColors[id] = v;
+  });
   function pickSlot() {
     const used = Object.values(courseColors);
     if (!used.length) return Math.floor(Math.random() * COLOR_SLOTS);
@@ -245,9 +312,7 @@
     if (!key || !courseColors) return null;
     if (courseColors[key] == null) {
       courseColors[key] = pickSlot();
-      try {
-        chrome.storage.local.set({ [COLOR_KEY]: courseColors }).catch(() => {});
-      } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
+      userPut("color", key, courseColors[key]);
     }
     return colorToken(courseColors[key]);
   }
@@ -406,33 +471,33 @@
   let weekKind = "video"; // 지금 고른 칸 (다시 그려도 유지)
 
   // ---------- 숨기기 (10/14) ----------
-  // 선택 과제·오프라인으로 낸 과제처럼 계속 남아 거슬리는 항목을 숨긴다. 이 브라우저에만 저장 { 항목 id: 숨긴 시각 }
+  // 선택 과제·오프라인으로 낸 과제처럼 계속 남아 거슬리는 항목을 숨긴다. 내 설정(sync)에 저장 { 항목 id: 숨긴 시각 }
   // 숨긴 항목은 개수·빨간 점·AI 답에서도 빠진다. 칸 맨 아래 "숨긴 항목 N개"에서 되돌릴 수 있다.
   const HIDE_KEY = "ui:hidden";
   let hidden = {};
-  chrome.storage.local
-    .get(HIDE_KEY)
-    .then((r) => {
-      hidden = r[HIDE_KEY] || {};
-      // 오래된 기록 정리 (120일)
-      const old = Date.now() - 120 * 86400000;
-      for (const [k, t] of Object.entries(hidden)) if (t < old) delete hidden[k];
-      rerender();
-    })
-    .catch(() => {});
+  userMap("hide", HIDE_KEY).then((v) => {
+    // 오래된 기록 정리 (120일). 키 수 한도(512)를 생각해 많아도 최근 300개만 남긴다
+    const old = Date.now() - 120 * 86400000;
+    const keep = Object.entries(v).filter(([, t]) => t >= old).sort((a, b) => b[1] - a[1]).slice(0, 300);
+    for (const id of Object.keys(v)) if (!keep.some(([k]) => k === id)) userPut("hide", id, null);
+    hidden = Object.fromEntries(keep);
+    rerender();
+  });
+  onUserChange("hide", (id, v) => {
+    if (v == null) delete hidden[id];
+    else hidden[id] = v;
+  });
   const isHidden = (id) => !!hidden[id];
   function setHidden(id, on) {
     if (on) hidden[id] = Date.now();
     else delete hidden[id];
-    try {
-      chrome.storage.local.set({ [HIDE_KEY]: hidden }).catch(() => {});
-    } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
+    userPut("hide", id, on ? hidden[id] : null);
     renderWeek();
   }
   const hideBtn = (id) =>
     el("button", {
       class: "hide-btn",
-      title: "숨기기 (이 브라우저에서만)",
+      title: "숨기기 (내 크롬 계정에서 모두 적용)",
       "aria-label": "숨기기",
       text: "×",
       onclick: (e) => {
