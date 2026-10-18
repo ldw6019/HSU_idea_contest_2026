@@ -119,7 +119,8 @@
     { id: "ai", label: "AI" }, // 예전 "알림" 탭. 알림은 각 탭의 빨간 점·색으로 충분해서 AI 탭으로 바꿈 (10/14)
   ];
 
-  const launcher = el("button", { class: "launcher", text: "+", title: "HSU PLUS 열기" });
+  // 디자인: 10/20 시안 A(또렷하게) 선택 — 지금 구조 그대로, 머리줄 로고·그라데이션, 둥근 탭 밑줄, e클래스 바탕 회색
+  const launcher = el("button", { class: "launcher", title: "HSU PLUS 열기" }, [el("span", { class: "logo", text: "+" })]);
   const panel = el("section", { class: "panel hidden", "aria-label": "HSU PLUS" });
   // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
   const wideBtn = el("button", {
@@ -132,7 +133,7 @@
     },
   });
   const header = el("header", {}, [
-    el("strong", { text: "HSU PLUS" }),
+    el("div", { class: "brand" }, [el("span", { class: "logo", "aria-hidden": "true", text: "+" }), el("strong", { text: "HSU PLUS" }), el("span", { class: "brand-sub", text: "e클래스 도우미" })]),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
@@ -680,7 +681,7 @@
       el("span", { class: "meta", text: loading ? "불러오는 중…" : week?.fetchedAt ? `시간표 ${ago(week.fetchedAt)}` : "" }),
       el("button", { class: "small", text: "+ 일정", onclick: () => openEventForm() }),
       el("button", {
-        class: "small",
+        class: "small refresh",
         text: "새로고침",
         disabled: loading ? "" : null,
         onclick: () => {
@@ -1148,7 +1149,7 @@
     const head = el("div", { class: "section-head" }, [
       el("span", { class: "meta", text: eclassLoading ? "불러오는 중…" : eclass?.fetchedAt ? `e클래스 ${ago(eclass.fetchedAt)}` : "" }),
       el("button", {
-        class: "small",
+        class: "small refresh",
         text: "새로고침",
         disabled: eclassLoading ? "" : null,
         onclick: () => {
@@ -1215,7 +1216,7 @@
       } else {
         bodyParts = [];
         if (mine.error) bodyParts.push(el("p", { class: "stale", text: "비교과를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
-        bodyParts.push(lists.program.length ? rows(lists.program.map(programTodoCard)) : placeholder(kind.empty));
+        bodyParts.push(lists.program.length ? rows(lists.program.map(programTodoCard)) : donePlaceholder(kind.empty));
         bodyParts.push(hiddenSection(progAll.filter((x) => isHidden(x.id)), (x) => (x.kind === "event" ? x.ev.t : x.p.title)));
       }
     } else if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
@@ -1225,7 +1226,7 @@
       bodyParts = [];
       if (eclass.error) bodyParts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
       if (weekKind === "video" && items.length) bodyParts.push(watchSummary(items));
-      bodyParts.push(items.length ? rows(grouped(weekKind, items, kind.label)) : placeholder(kind.empty));
+      bodyParts.push(items.length ? rows(grouped(weekKind, items, kind.label)) : donePlaceholder(kind.empty));
       bodyParts.push(hiddenSection(all[weekKind].filter((it) => isHidden(it.id)), (it) => `${it.title} · ${it.course || ""}`));
     }
 
@@ -1242,6 +1243,8 @@
   const ICONS = {
     clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
     warn: ["M10.3 4 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z", "M12 9.5v4", "M12 17h.01"],
+    refresh: ["M20 11a8 8 0 1 0-2.3 5.7", "M20 4v7h-7"],
+    check: ["M5 12.5l4.5 4.5L19 7.5"],
   };
   function icon(name) {
     const svg = document.createElementNS(SVGNS, "svg");
@@ -1357,6 +1360,8 @@
 
   // 화면 조각
   const placeholder = (text) => el("p", { class: "placeholder", text });
+  // "남은 게 없어요" = 다 끝냄 → 초록 체크 (초록은 완료에만)
+  const donePlaceholder = (text) => el("div", { class: "empty-done" }, [el("span", { class: "ok" }, [icon("check")]), el("p", { text })]);
   const rows = (children) => el("div", { class: "todos" }, children);
   function section(title, note, children) {
     return el("div", { class: "block" }, [
@@ -1735,7 +1740,7 @@
     const head = el("div", { class: "section-head" }, [
       el("span", { class: "meta", text: loadingAny ? "불러오는 중…" : fetchedAt ? `비교과 ${ago(fetchedAt)}` : "" }),
       el("button", {
-        class: "small",
+        class: "small refresh",
         text: "새로고침",
         disabled: loadingAny ? "" : null,
         onclick: () => {
