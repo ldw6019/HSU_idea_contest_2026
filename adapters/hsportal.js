@@ -100,6 +100,65 @@ export async function fetchOpenPrograms(getText, now = new Date()) {
     .sort((a, b) => new Date(a.due || 8.64e15) - new Date(b.due || 8.64e15));
 }
 
+// ================================================================ 비교과 상세 (공개 화면, 10/18 확인)
+// /ko/program/all/view/{번호}
+//  - div.title label.type: "개인" / "팀" / "주제별 상이"
+//  - "프로그램 일정 | 마일리지 | 신청기간 | 신청현황" 목록 = 전체 회차
+//      li.tbody: b(회차 이름), time 4개(회차 시작·끝, 신청 시작·끝, datetime 속성), .mileage("인재인증65"), .status("4 명 / 무제한 … 신청완료")
+//      회차가 여러 개면 input[name="tidx[]"] type=checkbox, 하나면 hidden
+//  - div.description: 안내문
+// 로그인한 상태로 열면 위쪽에 이름이 보이는 칸(div.info)이 있지만 읽지 않는다. "신청완료"는 내 회차 표시로만 쓴다.
+
+/** 비교과 상세 HTML → { typeLabel, pick, sessions, text } */
+export function parseProgramDetail(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  const list = [...doc.querySelectorAll("ul")].find((u) => /신청현황/.test(text(u.querySelector(":scope > li.thead"))));
+  const desc = doc.querySelector("div.description");
+  if (!list && !desc) throw new ParseError("비교과 상세 구조를 읽지 못했습니다");
+  const sessions = list
+    ? [...list.querySelectorAll(":scope > li.tbody")].map((li) => {
+        const t = [...li.querySelectorAll("time")].map((x) => x.getAttribute("datetime") || parseKDate(x.textContent));
+        const st = text(li.querySelector(".status"));
+        const pm = /(\d+)\s*명\s*\/\s*(\d+|무제한)/.exec(st);
+        return {
+          name: text(li.querySelector("b")),
+          start: t[0] || null,
+          end: t[1] || null,
+          applyFrom: t[2] || null,
+          applyTo: t[3] || null,
+          point: num(li.querySelector(".mileage")?.textContent),
+          applied: pm ? Number(pm[1]) : null,
+          capacity: pm && pm[2] !== "무제한" ? Number(pm[2]) : null,
+          mine: /신청완료/.test(st),
+        };
+      })
+    : [];
+  return {
+    typeLabel: text(doc.querySelector("div.title label.type")),
+    pick: doc.querySelector('input[name="tidx[]"]')?.type || null,
+    sessions,
+    text: text(desc).slice(0, 6000),
+  };
+}
+
+/** 여러 비교과 상세를 받는다 (동시 2개). 실패한 것은 null (같은 번호를 곧바로 다시 요청하지 않게). onProgress(받은 수, 전체) */
+export async function fetchProgramDetails(getText, ids, onProgress = () => {}) {
+  let done = 0;
+  const results = await runLimited(
+    ids.map((id) => async () => {
+      const r = parseProgramDetail(await getText(`${BASE}/ko/program/all/view/${id}`));
+      onProgress(++done, ids.length);
+      return r;
+    }),
+    2
+  );
+  const out = {};
+  ids.forEach((id, i) => {
+    out[id] = results[i].ok ? results[i].value : null;
+  });
+  return out;
+}
+
 // ================================================================ 내 비교과 (마이페이지, 로그인 필요)
 // 읽는 곳 (2026-10-14 확인, 모두 GET·읽기만):
 //  - 나의 비교과프로그램 /ko/mypage/programs/list/{wait|progress|complete}/{쪽}

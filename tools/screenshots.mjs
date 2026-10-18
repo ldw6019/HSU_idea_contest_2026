@@ -108,12 +108,23 @@ for (const x of [...MY.wait, ...MY.progress]) pages[`/ko/mypage/programs/view/${
 for (const x of MY.complete) pages[`/ko/module/eco/@poll/write/${x.id}/9${x.id}`] = `<html><body><form><label><input type="radio" name="q1" ${x.answered ? "checked" : ""}>그렇다</label><label><input type="radio" name="q1">아니다</label></form></body></html>`;
 pages["/ko/mypage/point"] = `<html><body><a href="/ko/mypage">마이페이지</a><div class="mileage"><ul>${[["35", "이번학기 취득<br>비교과 포인트"], ["580", "지난 학기 이월<br>비교과 포인트"], ["655", "전체 누적 포인트"], ["615", "졸업 인정<br>비교과 포인트"]].map(([n, l]) => `<li><p class="point"><i class="icon"></i><span>${n}</span>점</p><span>${l}</span></li>`).join("")}</ul></div></body></html>`;
 const card = (id, title, inst, point, applyTo, runFrom, runTo, prog) => `<li><div class="APPROACH_CLOSING"></div><a href="/ko/program/all/view/${id}"><b class="title">${title}</b></a><span class="institution">${inst}</span><label><b>D-2</b>${point}</label><span class="progress">${prog}</span><small class="date_layer"><span class="date_title">신청:</span><time datetime="${iso(rel(-5, 0, 0))}T09:00:00+09:00"></time><time datetime="${iso(applyTo)}T23:59:00+09:00"></time></small><small class="date_layer"><span class="date_title">운영:</span><time datetime="${iso(runFrom)}T${p2(runFrom.getHours())}:${p2(runFrom.getMinutes())}:00+09:00"></time><time datetime="${iso(runTo)}T${p2(runTo.getHours())}:${p2(runTo.getMinutes())}:00+09:00"></time></small></li>`;
-const openList = `<html><body><main>총 <b>4</b>개<ul class="columns-4">${[
+const openList = `<html><body><main>총 <b>5</b>개<ul class="columns-4">${[
   card(901, "교내 영어 스피치 대회", "한성프레스센터", 30, rel(3), rel(9, 13, 0), rel(9, 18, 0), "2/무제한"),
   card(902, "진로 캠프: 융합형 진로 설계 특강", "학생진로취업처", 10, rel(5), wk(7 + 2, 13, 0), wk(7 + 2, 15, 0), "5/100명"),
   card(903, "인문학 살롱: 역사학 특강", "상상력 교양대학", 10, rel(6), wk(7 + 3, 10, 30), wk(7 + 3, 12, 0), "23/90명"),
   card(904, "2026 AI 해커톤", "SW중심대학사업단", 20, rel(2), rel(10, 10, 0), rel(11, 18, 0), "31/40명"),
+  card(905, "2학기 집단상담 프로그램", "학생생활상담센터", 65, rel(6), wk(7 + 2, 10, 0), wk(28 + 3, 13, 0), "8/무제한"),
 ].join("")}</ul></main></body></html>`;
+
+// 공개 상세 화면 (회차 목록 + 안내문) → 신청 탭 분류·회차·수업 겹침
+const kt = (x) => `${iso(x)}T${p2(x.getHours())}:${p2(x.getMinutes())}:00+09:00`;
+const detail = (pick, sessions, desc) => `<html><body><div class="title"><label class="type">개인</label><h4>t</h4></div><ul class="black inner"><li class="thead"><span class="title">프로그램 일정</span><span class="mileage">마일리지</span><span class="date">신청기간</span><span class="status">신청현황</span></li>${sessions.map(([n, a, b, pt, st]) => `<li class="tbody"><span class="title"><label><input type="${pick}" name="tidx[]"><b>${n}</b><p><time datetime="${kt(a)}">x</time> ~ <time datetime="${kt(b)}">x</time></p></label></span><span class="mileage">인재인증${pt}</span><span class="date"><time datetime="${kt(rel(-5, 9, 0))}">x</time> 부터 <time datetime="${kt(rel(6, 23, 59))}">x</time> 까지</span><span class="status">${st || "3 명 / 무제한"}</span></li>`).join("")}</ul><div class="description">${desc}</div></body></html>`;
+pages["/ko/program/all/view/901"] = detail("hidden", [["교내 영어 스피치 대회", rel(9, 13, 0), rel(9, 18, 0), 30]], "본선 일시와 장소");
+pages["/ko/program/all/view/902"] = detail("checkbox", [["진로 캠프 1: 융합형 진로 설계", wk(7 + 2, 13, 0), wk(7 + 2, 15, 0), 10], ["진로 캠프 2: 직무 탐색 워크숍", wk(7 + 4, 18, 0), wk(7 + 4, 20, 0), 10]], "비대면/대면 중 하나만 선택해도 참여 가능, 모두 참여 시 추가 포인트");
+pages["/ko/program/all/view/903"] = detail("hidden", [["인문학 살롱", wk(7 + 3, 10, 30), wk(7 + 3, 12, 0), 10]], "장소: 상상관");
+pages["/ko/program/all/view/904"] = detail("hidden", [["2026 AI 해커톤", rel(10, 10, 0), rel(11, 18, 0), 20]], "1박 2일 해커톤");
+pages["/ko/program/all/view/905"] = detail("checkbox", [["집단상담(수10시)", wk(7 + 2, 10, 0), wk(28 + 2, 13, 0), 65], ["집단상담(목10시)", wk(7 + 3, 10, 0), wk(28 + 3, 13, 0), 65]], "총 12시간(3시간*4회) 집단상담. 운영방식: 대면");
+pages["/ko/program/all/view/201"] = detail("hidden", [["멘토링", rel(-20, 9, 0), rel(40, 23, 45), 15]], "멘토링 일정과 장소는 멘토와 협의하여 결정됩니다.");
 
 const toB64 = (s) => Buffer.from(s, "utf8").toString("base64");
 const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker"));
@@ -130,8 +141,8 @@ await sw.evaluate(
         return mk("<a>로그아웃</a> dae_h_siganpyo", u.href);
       }
       if (u.host === "hsportal.hansung.ac.kr") {
-        if (u.pathname.startsWith("/ko/program/all")) return mk(openList, u.href);
         if (pages[u.pathname]) return mk(pages[u.pathname], u.href);
+        if (u.pathname.startsWith("/ko/program/all")) return mk(openList, u.href);
         if (u.pathname === "/ko/mypage") return mk("<a>로그아웃</a> 학생 (0000000)", u.href);
       }
       return mk("<html><body></body></html>", u.href);
@@ -139,6 +150,10 @@ await sw.evaluate(
   },
   { ttJson: JSON.stringify(events), pages, openList }
 );
+
+// 직접 넣은 일정 하나 (톡방으로만 공지된 멘토링 모임)
+while (!(await sw.evaluate(() => !!chrome.storage))) await new Promise((r) => setTimeout(r, 100)); // 막 켜진 service worker는 잠깐 storage가 없음
+await sw.evaluate((d) => chrome.storage.sync.set({ "ev|demo1": { t: "멘토링 모임", d, s: "16:00", e: "17:30", p: "상상관 302", n: "톡방 공지", g: "201", at: 1 } }), iso(wk(3, 0, 0)));
 
 // ---------- 찍기 ----------
 const page = await ctx.newPage();
@@ -159,8 +174,15 @@ await panelShot("panel-week.png"); // 이번 주: 강의
 await seg("과제");
 await panelShot("panel-week-assign.png");
 await tab("캘린더");
+await R.locator(".cal-sub .seg-mini", { hasText: "이번 주" }).click();
 await panelShot("panel-calendar.png");
+await R.locator(".section-head .seg-mini", { hasText: "월간" }).click();
+await panelShot("panel-calendar-month.png");
 await tab("비교과");
+await page.waitForTimeout(800);
+await R.locator(".tcard.ap", { hasText: "집단상담" }).locator(".linkish", { hasText: "회차" }).click();
+await R.locator(".body").evaluate((e) => (e.scrollTop = 0));
+await panelShot("panel-apply.png");
 await seg("내 비교과");
 await panelShot("panel-programs.png");
 await tab("AI");
