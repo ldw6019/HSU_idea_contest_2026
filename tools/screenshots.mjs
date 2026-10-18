@@ -176,7 +176,7 @@ await panelShot("panel-week-assign.png");
 await tab("캘린더");
 await R.locator(".cal-sub .seg-mini", { hasText: "이번 주" }).click();
 await panelShot("panel-calendar.png");
-await R.locator(".section-head .seg-mini", { hasText: "월간" }).click();
+await R.locator(".frame.cal .seg-btn", { hasText: "월간" }).click();
 await panelShot("panel-calendar-month.png");
 await tab("비교과");
 await page.waitForTimeout(800);

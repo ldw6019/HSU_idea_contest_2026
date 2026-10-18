@@ -661,20 +661,10 @@
   }
 
   // ---- 머리줄 ----
+  // 머리줄: 이번 주·비교과 탭과 같은 모양 (위 "n분 전 기준 · + 일정 · 새로고침", 아래 액자의 넓은 주간 | 월간 선택) (10/19 사용자)
   function calHead() {
-    const modeBtn = (id, label) =>
-      el("button", {
-        class: calMode === id ? "seg-mini active" : "seg-mini",
-        text: label,
-        onclick: () => {
-          calMode = id;
-          calDay = null;
-          renderCalendar();
-        },
-      });
     return el("div", { class: "section-head" }, [
-      el("div", { class: "seg-mini-wrap" }, [modeBtn("week", "주간"), modeBtn("month", "월간")]),
-      el("span", { class: "meta", text: loading ? "불러오는 중…" : week?.fetchedAt && calMode === "week" ? `시간표 ${ago(week.fetchedAt)}` : "" }),
+      el("span", { class: "meta", text: loading ? "불러오는 중…" : week?.fetchedAt ? `시간표 ${ago(week.fetchedAt)}` : "" }),
       el("button", { class: "small", text: "+ 일정", onclick: () => openEventForm() }),
       el("button", {
         class: "small",
@@ -688,15 +678,35 @@
       }),
     ]);
   }
+  const CAL_MODES = [
+    { id: "week", label: "주간" },
+    { id: "month", label: "월간" },
+  ];
 
   function renderCalendar() {
     if (current !== "calendar") return;
-    const parts = [calHead()];
-    if (evDraft) parts.push(eventForm());
-    if (calMode === "month") parts.push(...monthView());
-    else parts.push(...weekView());
-    parts.push(calTools());
-    content.replaceChildren(...parts);
+    const seg = el(
+      "div",
+      { class: "seg", role: "tablist" },
+      CAL_MODES.map((m) =>
+        el("button", {
+          class: m.id === calMode ? "seg-btn active" : "seg-btn",
+          role: "tab",
+          "aria-selected": String(m.id === calMode),
+          text: m.label,
+          onclick: () => {
+            calMode = m.id;
+            calDay = null;
+            renderCalendar();
+          },
+        })
+      )
+    );
+    const inner = [];
+    if (evDraft) inner.push(eventForm());
+    inner.push(...(calMode === "month" ? monthView() : weekView()));
+    inner.push(calTools());
+    content.replaceChildren(calHead(), el("div", { class: "frame cal" }, [seg, el("div", { class: "frame-body" }, inner)]));
   }
 
   // ---- 주간 ----
@@ -851,17 +861,19 @@
     }
 
     if (week.ok && !classes.length && !extra.length) parts.push(el("p", { class: "placeholder", text: offset ? "다음 주 수업·일정이 없어요." : "이번 주 수업·일정이 없어요." }));
-    parts.push(el("p", { class: "tt-legend", text: "흰 칸 = 내 비교과 · 보라 테두리 = 직접 넣은 일정 · 요일이나 종일 줄을 누르면 그날 목록" }));
     parts.push(grid);
     parts.push(
-      el("button", {
+      el("div", { class: "cal-foot" }, [
+        el("span", { class: "tt-legend", text: "흰 칸 내 비교과 · 보라 직접 넣은 일정 · 요일을 누르면 그날 목록" }),
+        el("button", {
         class: "weekend-toggle",
         text: weekendOpen ? "토·일 접기" : `토·일 펼치기${weekendCount || weekendDues ? ` (${[weekendCount ? `일정 ${weekendCount}` : "", weekendDues ? `마감 ${weekendDues}` : ""].filter(Boolean).join(" · ")})` : ""}`,
         onclick: () => {
           calWeekendOpen = !weekendOpen;
           renderCalendar();
         },
-      })
+        }),
+      ])
     );
     if (calDay) {
       const d = fromYmd(calDay);
@@ -942,7 +954,7 @@
       );
     }
     parts.push(grid);
-    parts.push(el("p", { class: "tt-legend", text: "수업은 주간에서 · 파랑 = 내 비교과 · 보라 = 직접 넣은 일정 · 마감 = 과제·퀴즈·강의" }));
+    parts.push(el("div", { class: "cal-foot" }, [el("span", { class: "tt-legend", text: "수업은 주간에서 · 파랑 내 비교과 · 보라 직접 넣은 일정 · 마감 = 과제·퀴즈·강의" })]));
     if (calDay) {
       const d = fromYmd(calDay);
       parts.push(dayDetail(calDay, [...allDayOf(d, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, d))]));

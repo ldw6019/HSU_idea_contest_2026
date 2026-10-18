@@ -555,3 +555,12 @@ button.tt-day.today { color: var(--ot-primary); }
 .ap-stags { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex: none; }
 .tcard.ap .tc-foot .dline { overflow: hidden; }
 .tcard.ap .tc-foot .dline .when { overflow: hidden; text-overflow: ellipsis; }
+
+/* 캘린더 탭: 액자 + 넓은 주간 | 월간 선택 (10/19). 격자가 회색 위에 있으면 답답해서 액자 안은 흰 바탕 */
+.frame.cal > .frame-body { background: #fff; padding: 12px; }
+.frame.cal .cal-sub { margin: 0 0 8px; }
+.cal-foot { display: flex; align-items: flex-start; gap: 10px; margin-top: 6px; }
+.cal-foot .tt-legend { flex: 1; margin: 0; line-height: 1.45; }
+.cal-foot .weekend-toggle { flex: none; margin-top: 0; }
+.frame.cal .ev-form { margin-bottom: 12px; }
+.frame.cal .cal-tools { margin-top: 12px; }
