@@ -25,5 +25,8 @@ check("지난 학기(1학기) 모은 점수 = 내역 합계", r.prevEarned === 4
 check("800 넘으면 졸업 요건 달성", r.done && r.toGraduate === 0);
 check("최근 내역은 날짜 내림차순", r.recent[0].date === "2026-10-01");
 
+check("내역이 빈 배열이면 지난 학기 0점", pointSummary({ carriedIn: 0, semester: 0, graduation: 0, history: [] }, at("2026-10-19")).prevEarned === 0);
+check("내역을 모르면(예전 캐시) null", pointSummary({ carriedIn: 0, semester: 0, graduation: 0 }, at("2026-10-19")).prevEarned === null);
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

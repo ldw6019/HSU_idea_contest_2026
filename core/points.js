@@ -36,7 +36,8 @@ const sumIn = (history, sem) => (history || []).filter((r) => r.date >= sem.from
 export function pointSummary(pt, now = new Date()) {
   const sem = semesterOf(now);
   const prev = prevSemester(sem);
-  const hasHistory = Array.isArray(pt.history) && pt.history.length > 0;
+  // history가 없으면(예전 캐시) 모름 → null, 빈 배열이면 모은 점수 0
+  const hasHistory = Array.isArray(pt.history);
   // 이번 학기에 실제로 모은 점수 (한도와 상관없이). 학교 칸과 내역 합계 중 큰 값 (학교 칸이 한도로 잘려 있을 수도 있어서)
   const earned = Math.max(pt.semester ?? 0, hasHistory ? sumIn(pt.history, sem) : 0);
   const prevEarned = hasHistory ? sumIn(pt.history, prev) : null;

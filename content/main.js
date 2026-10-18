@@ -1417,7 +1417,9 @@
     rerender();
     try {
       const { cache, hsportal } = await mods;
-      const r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force });
+      let r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force });
+      // 10/20: 포인트 내역(history)이 없는 예전 캐시면 바로 새로 받는다 (안 그러면 1시간 동안 "지난 학기 모은 점수 -")
+      if (r.fromCache && !Array.isArray(r.data?.points?.history)) r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force: true });
       mine = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       classified.clear();
       ensureDetails(r.data.programs.map((p) => p.id)); // 매주 회차 판단용 안내문
