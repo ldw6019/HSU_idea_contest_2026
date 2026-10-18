@@ -1353,7 +1353,8 @@
     import(chrome.runtime.getURL("core/ai.js")),
     import(chrome.runtime.getURL("core/classify.js")),
     import(chrome.runtime.getURL("core/calendar.js")),
-  ]).then(([cache, eclass, hsportal, ai, classify, calendar]) => ({ cache, eclass, hsportal, ai, classify, calendar }));
+    import(chrome.runtime.getURL("core/points.js")),
+  ]).then(([cache, eclass, hsportal, ai, classify, calendar, points]) => ({ cache, eclass, hsportal, ai, classify, calendar, points }));
 
   // 다른 학교 사이트 페이지 글은 백그라운드가 받아 준다
   async function getText(url) {
@@ -1524,7 +1525,6 @@
   //              맨 아래 온라인(LMS에서 기간 안에 듣는 형식)은 기간만
   // 일정 종류(adapters/hsportal.js scheduleKind): exact(며칠 몇 시) / online / open(기간만, 세부 일정 따로)
   //  → exact만 날짜·시각과 D-day를 크게 보여주고 캘린더에 올린다
-  const GRAD_POINTS = 800; // 졸업 요건 비교과 포인트 (사용자 확인, 학과·학번마다 다를 수 있음)
   const PKINDS = [
     { id: "apply", label: "신청" },
     { id: "mine", label: "내 비교과" },
@@ -1595,23 +1595,82 @@
     ]);
   }
 
-  // 졸업 인정 포인트 / 800
+  // ---------- 비교과 포인트 (10/19 사용자: 학기 200점 한도, 이월 200점, 800점 넘으면 따로) ----------
+  // 계산은 core/points.js. 학교 화면 6칸 + 포인트 내역(학기별로 실제 모은 점수)
+  const fmt = (n) => Number(n || 0).toLocaleString("ko-KR");
+  function pointHistory(rows, title) {
+    if (!rows.length) return null;
+    return el("details", { class: "pt-hist" }, [
+      el("summary", { text: title }),
+      el(
+        "div",
+        { class: "pt-hist-list" },
+        rows.map((r) => el("div", { class: "pt-hrow" }, [el("span", { class: "d", text: r.date.slice(5).replace("-", "/") }), el("span", { class: "t", text: r.title }), el("b", { text: `+${r.change}` })]))
+      ),
+    ]);
+  }
   function pointCard(pt) {
-    const have = pt.graduation ?? pt.total ?? 0;
-    const left = Math.max(0, GRAD_POINTS - have);
-    const done = left === 0;
-    const bar = el("div", { class: "pt-bar" }, [el("div", { class: done ? "pt-fill done" : "pt-fill" })]);
-    bar.firstChild.style.width = `${Math.min(100, (have / GRAD_POINTS) * 100)}%`;
+    if (!PT) return el("div", { class: "pt-card" }, [el("p", { class: "placeholder", text: "포인트를 계산하는 중…" })]);
+    const S = PT.pointSummary(pt);
+    if (S.done) return eliteCard(S, pt);
+    const have = S.graduation;
+    const bar = el("div", { class: "pt-bar" }, [el("div", { class: "pt-fill" })]);
+    bar.firstChild.style.width = `${Math.min(100, (have / PT.GRAD_POINTS) * 100)}%`;
+
+    // 이번 학기 200점 칸: 이월(연한 남색) + 이번 학기 모은 점수(남색)
+    const semBar = el("div", { class: "pt-sembar", title: `한 학기 인정 한도 ${PT.SEM_CAP}점` }, [el("div", { class: "seg carry" }), el("div", { class: "seg earned" })]);
+    semBar.children[0].style.width = `${(S.fromCarry / PT.SEM_CAP) * 100}%`;
+    semBar.children[1].style.width = `${(S.fromEarned / PT.SEM_CAP) * 100}%`;
+    const note =
+      S.room > 0
+        ? `${S.room}점 더 모으면 이번 학기에 바로 인정돼요. 그 뒤로 모은 점수는 다음 학기로 넘어가요(최대 ${PT.CARRY_CAP}점).`
+        : S.lost > 0
+          ? `이번 학기 칸이 다 찼고, 다음 학기 이월도 ${PT.CARRY_CAP}점이 다 찼어요. 넘친 ${S.lost}점은 사라져요.`
+          : `이번 학기 칸은 다 찼어요. 지금부터 모으는 점수는 다음 학기로 넘어가요 (${S.carryRoom}점까지).`;
+    const stat = (label, value, sub, cls = "") => el("div", { class: `pt-stat ${cls}` }, [el("span", { class: "l", text: label }), el("b", { text: value }), sub ? el("span", { class: "s", text: sub }) : null]);
+    const stats = [
+      stat("지난 학기 모은 점수", S.prevEarned == null ? "-" : `${fmt(S.prevEarned)}점`, S.prev.label),
+      stat("지난 학기에서 이월", `${fmt(S.carryIn)}점`, "이번 학기 칸에 먼저 들어감"),
+      stat("이번 학기 모은 점수", `${fmt(S.earned)}점`, S.sem.label),
+      stat("다음 학기로 이월", `${fmt(S.carryOut)}점`, S.carryOut ? "학기가 끝나면 넘어가요 (예상)" : `최대 ${PT.CARRY_CAP}점`),
+    ];
+    if (S.lost || S.schoolExpired) stats.push(stat("소멸", `${fmt(Math.max(S.lost, S.schoolExpired || 0))}점`, "이월 한도를 넘은 점수", "warn"));
+    if (S.total != null) stats.push(stat("전체 누적", `${fmt(S.total)}점`, "지금까지 모은 점수 전부"));
     return el("div", { class: "pt-card" }, [
       el("div", { class: "pt-top" }, [
         el("div", {}, [
           el("div", { class: "pt-label", text: "졸업 인정 비교과 포인트" }),
-          el("div", { class: "pt-num" }, [el("b", { text: String(have) }), el("span", { text: ` / ${GRAD_POINTS}점` })]),
+          el("div", { class: "pt-num" }, [el("b", { text: fmt(have) }), el("span", { text: ` / ${PT.GRAD_POINTS}점` })]),
         ]),
-        el("div", { class: done ? "pt-left done" : "pt-left" }, done ? [el("b", { text: "졸업 요건 달성" })] : [el("span", { text: "졸업까지" }), el("b", { text: `${left}점` })]),
+        el("div", { class: "pt-left" }, [el("span", { text: "졸업까지" }), el("b", { text: `${fmt(S.toGraduate)}점` })]),
       ]),
       bar,
-      el("div", { class: "pt-foot", text: [pt.semester != null ? `이번 학기 +${pt.semester}점` : "", pt.total != null ? `전체 누적 ${pt.total}점` : ""].filter(Boolean).join(" · ") }),
+      el("div", { class: "pt-sem" }, [
+        el("div", { class: "pt-sem-head" }, [el("span", { text: `이번 학기 인정 · ${S.sem.label}` }), el("b", { text: `${S.recognized} / ${PT.SEM_CAP}` })]),
+        semBar,
+        el("div", { class: "pt-legend" }, [
+          el("span", { class: "k carry" }), el("span", { text: `이월 ${S.fromCarry}` }),
+          el("span", { class: "k earned" }), el("span", { text: `이번 학기 ${S.fromEarned}` }),
+          S.overflow ? el("span", { class: "over", text: `+ 넘친 ${S.overflow}` }) : null,
+        ]),
+        el("p", { class: "pt-note", text: note }),
+      ]),
+      el("div", { class: "pt-stats" }, stats),
+      pointHistory(S.recent, "최근 포인트 내역"),
+    ]);
+  }
+  // 졸업 요건(800점)을 이미 채운 사람: 게이지 없이 점수와 이번 학기 모은 점수만 (장학금 경쟁 등)
+  function eliteCard(S, pt) {
+    const thisSem = (pt.history || []).filter((r) => r.date >= S.sem.from && r.date < S.sem.to).sort((a, b) => b.date.localeCompare(a.date));
+    return el("div", { class: "pt-elite" }, [
+      el("div", { class: "pe-top" }, [el("span", { class: "pe-label", text: "내 비교과 점수" }), el("span", { class: "pe-badge", text: "✓ 졸업 요건 달성" })]),
+      el("div", { class: "pe-num" }, [el("b", { text: fmt(S.total ?? S.graduation) }), el("span", { text: "점" })]),
+      el("div", { class: "pe-sem" }, [
+        el("span", { class: "l", text: `${S.sem.label}에 모은 점수` }),
+        el("b", { text: `+${fmt(S.earned)}점` }),
+      ]),
+      el("p", { class: "pe-note", text: `학기 인정 한도(${PT.SEM_CAP}점)와 상관없이 이번 학기에 실제로 모은 점수예요.` }),
+      pointHistory(thisSem.slice(0, 20), `이번 학기 내역 ${thisSem.length}건${thisSem.length > 20 ? " (최근 20건)" : ""}`),
     ]);
   }
 
@@ -1710,9 +1769,11 @@
   const classified = new Map(); // 분류 결과 (상세가 바뀌면 비움)
   let C = null; // core/classify.js
   let CAL = null; // core/calendar.js
+  let PT = null; // core/points.js
   mods.then((m) => {
     C = m.classify;
     CAL = m.calendar;
+    PT = m.points;
     rerender();
   });
   const detailsReady = mods

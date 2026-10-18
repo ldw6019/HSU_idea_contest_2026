@@ -564,3 +564,55 @@ button.tt-day.today { color: var(--ot-primary); }
 .cal-foot .weekend-toggle { flex: none; margin-top: 0; }
 .frame.cal .ev-form { margin-bottom: 12px; }
 .frame.cal .cal-tools { margin-top: 12px; }
+
+/* ---------- 비교과 포인트: 학기 200점 칸 · 이월 · 숫자 (10/19) ---------- */
+.pt-sem { margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--ot-line); }
+.pt-sem-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 12px; color: var(--ot-sub); font-weight: 600; }
+.pt-sem-head b { font-size: 14px; color: var(--ot-text); font-variant-numeric: tabular-nums; }
+.pt-sembar { display: flex; margin-top: 6px; height: 10px; border-radius: 999px; background: #e7ecf4; overflow: hidden; }
+.pt-sembar .seg { height: 100%; }
+.pt-sembar .carry { background: #9db8e6; }
+.pt-sembar .earned { background: var(--ot-primary); }
+.pt-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin-top: 5px; font-size: 11.5px; color: var(--ot-sub); font-variant-numeric: tabular-nums; }
+.pt-legend .k { width: 9px; height: 9px; border-radius: 2px; }
+.pt-legend .k.carry { background: #9db8e6; }
+.pt-legend .k.earned { background: var(--ot-primary); margin-left: 6px; }
+.pt-legend .over { margin-left: auto; color: var(--ot-primary); font-weight: 700; }
+.pt-note { margin: 6px 0 0; font-size: 11.5px; color: var(--ot-sub); line-height: 1.5; }
+.pt-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 10px; }
+.panel.wide .pt-stats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.pt-stat { display: flex; flex-direction: column; gap: 1px; padding: 7px 9px; border-radius: 8px; background: var(--ot-soft); min-width: 0; }
+.pt-stat .l { font-size: 11px; color: var(--ot-sub); font-weight: 600; }
+.pt-stat b { font-size: 15px; font-variant-numeric: tabular-nums; }
+.pt-stat .s { font-size: 10.5px; color: var(--ot-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-stat.warn { background: #fdecec; }
+.pt-stat.warn b { color: #b42318; }
+.pt-hist { margin-top: 10px; font-size: 12px; }
+.pt-hist summary { cursor: pointer; color: var(--ot-sub); font-weight: 600; }
+.pt-hist-list { display: flex; flex-direction: column; margin-top: 6px; }
+.pt-hrow { display: flex; gap: 8px; align-items: baseline; padding: 4px 0; border-top: 1px solid #f0f2f5; font-variant-numeric: tabular-nums; }
+.pt-hrow .d { flex: none; width: 38px; color: var(--ot-muted); }
+.pt-hrow .t { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-hrow b { flex: none; color: var(--ot-primary); }
+
+/* 졸업 요건 달성 (800점 이상): 게이지 없이 점수를 크게 */
+.pt-elite {
+  position: relative; overflow: hidden; border-radius: 14px; padding: 14px 16px 12px; color: #fff;
+  background: radial-gradient(120% 140% at 100% 0%, #2a6fd0 0%, rgba(42, 111, 208, 0) 55%), linear-gradient(135deg, #0b3f86 0%, #082c5e 100%);
+  box-shadow: 0 6px 18px rgba(8, 44, 94, 0.28);
+}
+.pt-elite::after { content: ""; position: absolute; top: -40%; right: -20%; width: 60%; height: 180%; background: linear-gradient(115deg, rgba(255, 255, 255, 0) 30%, rgba(255, 255, 255, 0.12) 50%, rgba(255, 255, 255, 0) 70%); transform: rotate(8deg); pointer-events: none; }
+.pe-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pe-label { font-size: 12px; font-weight: 700; letter-spacing: 0.3px; color: rgba(255, 255, 255, 0.82); }
+.pe-badge { font-size: 11px; font-weight: 800; padding: 2px 9px; border-radius: 999px; color: #fff; background: linear-gradient(90deg, #2fe07a, #0fbf55); box-shadow: 0 1px 4px rgba(15, 191, 85, 0.4); }
+.pe-num { margin-top: 4px; display: flex; align-items: baseline; gap: 4px; font-variant-numeric: tabular-nums; }
+.pe-num b { font-size: 40px; font-weight: 900; letter-spacing: -1.5px; line-height: 1.05; background: linear-gradient(180deg, #ffffff 0%, #cfe0ff 100%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.pe-num span { font-size: 16px; font-weight: 700; color: rgba(255, 255, 255, 0.85); }
+.pe-sem { display: flex; justify-content: space-between; align-items: baseline; margin-top: 10px; padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, 0.1); }
+.pe-sem .l { font-size: 12px; color: rgba(255, 255, 255, 0.85); font-weight: 600; }
+.pe-sem b { font-size: 20px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.pe-note { margin: 6px 2px 0; font-size: 11px; color: rgba(255, 255, 255, 0.7); }
+.pt-elite .pt-hist summary { color: rgba(255, 255, 255, 0.85); }
+.pt-elite .pt-hrow { border-top-color: rgba(255, 255, 255, 0.12); }
+.pt-elite .pt-hrow .d { color: rgba(255, 255, 255, 0.6); }
+.pt-elite .pt-hrow b { color: #cfe0ff; }

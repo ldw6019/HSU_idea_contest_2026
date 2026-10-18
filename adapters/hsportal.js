@@ -269,6 +269,36 @@ export function parsePoints(html) {
   return out;
 }
 
+/**
+ * 포인트 화면 아래 "비교과 포인트 내역" (번호 | 내역 | 변동 | 누적 | 날짜), 한 쪽 20줄. 2쪽부터 /ko/mypage/point/{쪽} (10/19 확인)
+ * → [{ title, change, date: "YYYY-MM-DD" }]. 학기별 실제로 모은 점수(인정 한도 200 넘은 것 포함)를 계산하는 데 쓴다.
+ */
+export function parsePointHistory(html) {
+  const doc = new DOMParser().parseFromString(html, "text/html");
+  return [...doc.querySelectorAll("li.tbody")]
+    .filter((li) => li.querySelector(".change") && li.querySelector(".date"))
+    .map((li) => ({
+      // "[프로그램명] 이수", "핵심역량진단 [..] 참여", "관리자적립 (…)" 등 → 앞의 "[" 와 끝의 "] 이수/참여"만 걷어 낸다
+      title: text(li.querySelector(".title")).replace(/^\[/, "").replace(/\]?\s*(이수|참여)?\s*$/, "").slice(0, 80),
+      change: Number(text(li.querySelector(".change")).replace(/[^\d-]/g, "")) || 0,
+      date: (/\d{4}-\d{2}-\d{2}/.exec(text(li.querySelector(".date"))) || [null])[0],
+    }))
+    .filter((r) => r.date);
+}
+const POINT_PAGE = 20;
+const POINT_MAX_PAGES = 10; // 학교 서버 부담: 최대 200줄
+async function fetchPoints(getText) {
+  const first = await getText(`${BASE}/ko/mypage/point`);
+  const points = parsePoints(first);
+  const history = parsePointHistory(first);
+  for (let p = 2, last = history.length; p <= POINT_MAX_PAGES && last >= POINT_PAGE; p++) {
+    const rows = parsePointHistory(await getText(`${BASE}/ko/mypage/point/${p}`));
+    history.push(...rows);
+    last = rows.length;
+  }
+  return { ...points, history };
+}
+
 /** 설문 화면이 이미 낸 설문인지: 체크된 답·적힌 답이 하나라도 있으면 낸 것. 입력칸이 아예 없으면 null(모름) */
 export function pollAnswered(html) {
   const doc = new DOMParser().parseFromString(html, "text/html");
@@ -284,7 +314,7 @@ export function pollAnswered(html) {
  */
 export async function fetchMyPrograms(getText, now = new Date()) {
   const list = (kind) => getText(`${BASE}/ko/mypage/programs/list/${kind}/1`).then(parseMyList);
-  const [wait, progress, done, points] = await Promise.all([list("wait"), list("progress"), list("complete"), getText(`${BASE}/ko/mypage/point`).then(parsePoints)]);
+  const [wait, progress, done, points] = await Promise.all([list("wait"), list("progress"), list("complete"), fetchPoints(getText)]);
 
   // 시작 대기·진행 중: 프로그램 화면에서 내 회차 일정을 읽는다 (동시 2개)
   const active = [...wait.map((p) => ({ ...p, phase: "wait" })), ...progress.map((p) => ({ ...p, phase: "progress" }))];
