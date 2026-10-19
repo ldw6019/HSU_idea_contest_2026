@@ -330,7 +330,7 @@ export function fitContext(context, maxChars = 14000) {
  * 서버는 { intent, picks: [{id, reason}], message } 형식만 돌려준다 (worker/ 참고).
  * ※ background.js에서 부른다: 화면(content script)에서 부르면 출처가 e클래스 주소가 돼서 서버의 출처 검사에 막힌다.
  */
-export async function askRemote(endpoint, installId, question, context, { timeoutMs = 15000 } = {}) {
+export async function askRemote(endpoint, installId, question, context, { timeoutMs = 30000 } = {}) { // 서버가 잘린 답을 한 번 더 받는 시간까지
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {

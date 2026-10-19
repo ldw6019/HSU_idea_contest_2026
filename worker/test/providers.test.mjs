@@ -80,5 +80,27 @@ try {
 check("모르는 프리셋 이름 오류", !!err);
 check("프리셋마다 요금·키 이름 있음", Object.values(PRESETS).every((p) => p.in > 0 && p.out > 0 && (p.provider === "mock" || p.key)));
 
+// 8) 답이 길어 잘리면(도구 입력 없음 + max_tokens) 2배 길이로 한 번 더
+{
+  let n = 0;
+  const lens = [];
+  reply = () => {
+    lens.push(sent.body.max_tokens);
+    return n++ === 0 ? { body: { content: [], stop_reason: "max_tokens", usage: {} } } : { body: { content: [{ type: "tool_use", name: "answer", input: answer }], usage: { input_tokens: 10, output_tokens: 10 } } };
+  };
+  const r2 = await callModel({ AI_PRESET: "haiku-5.5", ANTHROPIC_API_KEY: "a" }, args);
+  check("잘린 답 → 2배 길이로 재시도", lens.join() === "400,800" && r2.output.intent === "today", lens.join());
+}
+// 9) 오류 → 원인 코드
+{
+  const { errorCode } = await import("../src/providers.js");
+  const mk = (status, detail, info) => Object.assign(new Error("model http"), { status, detail, info });
+  check("401 → key", errorCode(mk(401, "authentication_error")) === "key");
+  check("크레딧 부족 → credit", errorCode(mk(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API")) === "credit");
+  check("529 → busy", errorCode(mk(529, "overloaded_error")) === "busy");
+  check("모델 이름 틀림 → model_name", errorCode(mk(404, "not_found_error", "model: claude-x")) === "model_name");
+  check("잘림 → too_long", errorCode(Object.assign(new Error("x"), { code: "too_long" })) === "too_long");
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

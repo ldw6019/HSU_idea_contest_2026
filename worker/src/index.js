@@ -12,7 +12,7 @@
 //    → 누가 가짜 안내문을 보내도 그 가짜 글의 해시에만 묶여서, 진짜 글을 가진 다른 학생에게는 영향이 없다.
 //  - 딴짓 질문 막기: 답 형식 고정(번호 + 짧은 이유), 답 길이 상한, 범위 밖 판정, 입력 검사, 1인·전체 하루 한도.
 
-import { callModel } from "./providers.js";
+import { callModel, errorCode } from "./providers.js";
 import { D1Store, MemoryStore } from "./store.js";
 import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATEGORIES } from "./prompts.js";
 
@@ -184,7 +184,10 @@ export async function handle(req, env, { store }) {
       await recordCost(store, r);
       return json(200, { ...cleanAnswer(r.output, body.context), model: r.model }, c.headers);
     } catch (err) {
-      return json(502, { error: "model", mode: "template" }, c.headers);
+      const code = errorCode(err);
+      // wrangler tail로 원인을 볼 수 있게 (질문·학생 정보는 남기지 않고 오류 종류만)
+      console.log(JSON.stringify({ ev: "ask_model_error", code, status: err?.status || null, detail: err?.detail || null, info: err?.info || err?.message || null }));
+      return json(502, { error: "model", reason: code, mode: "template" }, c.headers);
     }
   }
 
@@ -204,8 +207,10 @@ export async function handle(req, env, { store }) {
       if (!result) return json(502, { error: "model_format" }, c.headers);
       await store.putClassify(hash, programId, result, r.model);
       return json(200, { hash, cached: false, result, model: r.model }, c.headers);
-    } catch {
-      return json(502, { error: "model" }, c.headers);
+    } catch (err) {
+      const code = errorCode(err);
+      console.log(JSON.stringify({ ev: "classify_model_error", code, status: err?.status || null, detail: err?.detail || null }));
+      return json(502, { error: "model", reason: code }, c.headers);
     }
   }
 

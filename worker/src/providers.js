@@ -15,7 +15,7 @@ async function postJSON(url, headers, body) {
   try {
     const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify(body), signal: ctrl.signal });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw Object.assign(new Error(`model http ${res.status}`), { status: res.status, detail: data?.error?.type || data?.error?.message || null });
+    if (!res.ok) throw Object.assign(new Error(`model http ${res.status}`), { status: res.status, detail: data?.error?.type || data?.error?.status || null, info: String(data?.error?.message || "").slice(0, 160) });
     return data;
   } finally {
     clearTimeout(timer);
@@ -53,7 +53,7 @@ const PROVIDERS = {
       }
     );
     const block = (data.content || []).find((b) => b.type === "tool_use" && b.name === tool.name);
-    if (!block) throw new Error("model returned no tool output");
+    if (!block) throw Object.assign(new Error("model returned no tool output"), { code: data.stop_reason === "max_tokens" ? "too_long" : "format" });
     return { output: block.input, usage: { input: data.usage?.input_tokens || 0, output: data.usage?.output_tokens || 0 } };
   },
 
@@ -83,7 +83,7 @@ const PROVIDERS = {
     }
     const parts = data.candidates?.[0]?.content?.parts || [];
     const call = parts.find((p) => p.functionCall?.name === tool.name)?.functionCall;
-    if (!call) throw new Error("model returned no tool output");
+    if (!call) throw Object.assign(new Error("model returned no tool output"), { code: data.candidates?.[0]?.finishReason === "MAX_TOKENS" ? "too_long" : "format" });
     const u = data.usageMetadata || {};
     return { output: call.args || {}, usage: { input: u.promptTokenCount || 0, output: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } };
   },
@@ -131,13 +131,36 @@ export async function callModel(env, args) {
       continue;
     }
     try {
-      const r = await fn(m, args, env);
+      let r;
+      try {
+        r = await fn(m, args, env);
+      } catch (err) {
+        // 답이 길어 잘리면(예: "영어로 다섯 문장 이상" 같은 요청) 한 번만 2배 길이로 다시 → 서버가 문장을 250자로 자름
+        if (err.code !== "too_long") throw err;
+        r = await fn(m, { ...args, maxTokens: args.maxTokens * 2 }, env);
+      }
       return { ...r, model: m.model, preset: m.name, cost: costMicroUSD(m, r.usage) };
     } catch (err) {
       lastErr = err;
     }
   }
   throw lastErr;
+}
+
+/** 모델 오류 → 짧은 원인 코드 (확장 안내 끝 괄호, wrangler tail 기록용. 질문 내용은 남기지 않음) */
+export function errorCode(err) {
+  if (err?.code) return err.code; // too_long | format
+  if (err?.name === "AbortError") return "timeout";
+  const st = err?.status;
+  const d = `${err?.detail || ""} ${err?.info || ""}`.toLowerCase();
+  if (/missing key/.test(err?.message || "")) return "no_key";
+  if (st === 401 || st === 403) return "key"; // 키가 틀렸거나 지워짐
+  if (/credit|balance|billing/.test(d)) return "credit"; // 크레딧 부족
+  if (st === 429 || st === 529 || /overload|rate|resource_exhausted/.test(d)) return "busy"; // 회사 쪽이 바쁨·속도 제한
+  if (st === 404 || /not_found|model/.test(d)) return "model_name"; // 모델 이름이 틀림·퇴역
+  if (st === 400) return "bad_request";
+  if (st >= 500) return "provider_down";
+  return "unknown";
 }
 
 /** 사용한 토큰 → 비용(백만분의 1달러). 요금은 프리셋(100만 토큰당 달러) */
