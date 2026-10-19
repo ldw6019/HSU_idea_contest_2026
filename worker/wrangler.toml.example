@@ -1,5 +1,5 @@
 # HSU PLUS AI 서버 설정 예시. 복사해서 wrangler.toml로 쓰고, 비밀값은 여기 적지 않는다.
-#   키 등록(본인이 직접): npx wrangler secret put ANTHROPIC_API_KEY
+#   키 등록(본인이 직접): npx wrangler secret put ANTHROPIC_API_KEY   (Gemini면 GEMINI_API_KEY)
 #   저장소 만들기:        npx wrangler d1 create hsuplus  → 아래 database_id 채우기
 #                        npx wrangler d1 execute hsuplus --remote --file=worker/schema.sql
 #   배포:                npx wrangler deploy
@@ -8,17 +8,17 @@ main = "src/index.js"
 compatibility_date = "2026-10-01"
 
 [vars]
-# 모델 바꾸기: 여기 세 줄(+요금)만 바꾸면 된다. 확장은 다시 배포하지 않는다.
-AI_PROVIDER = "anthropic"          # anthropic | openai_compat | mock
-AI_MODEL = "claude-haiku-5-5"
-PRICE_IN_PER_MTOK = "0.1"          # 100만 토큰당 달러 (하루 비용 상한 계산용)
-PRICE_OUT_PER_MTOK = "0.5"
-# AI_FALLBACK_PROVIDER = ""        # 기본 모델 실패 시 한 번 더 시도할 예비
-# AI_FALLBACK_MODEL = ""
-# AI_BASE_URL = ""                 # openai_compat일 때 주소
+# ── 모델 바꾸기: 이 한 줄만 바꾸고 다시 배포 (목록·요금은 src/models.js) ──
+#   haiku-5.5 (Anthropic, 기본) | gemini-3.8-flash | gemini-2.5-flash-lite | mock(키 없이 시험)
+#   그 회사 키를 비밀값으로 등록해야 함: ANTHROPIC_API_KEY / GEMINI_API_KEY
+AI_PRESET = "haiku-5.5"
+# 기본 모델이 실패할 때 한 번 더 시도할 예비 (키도 등록돼 있어야 씀, 없으면 비워 둠)
+# AI_FALLBACK_PRESET = "gemini-2.5-flash-lite"
+# 목록에 없는 모델을 잠깐 시험할 때만: AI_PROVIDER / AI_MODEL / AI_BASE_URL / PRICE_IN_PER_MTOK / PRICE_OUT_PER_MTOK
 
-# 확장 주소만 허용 (chrome://extensions에서 확장 ID 확인)
-ALLOWED_ORIGINS = "chrome-extension://확장ID"
+# 확장에서 온 요청만 허용. 압축 해제 설치는 사람마다 확장 ID가 달라서 모든 확장 출처(*)를 허용.
+#  웹스토어에 올리면 ID가 하나로 정해지므로 "chrome-extension://그ID"로 좁힐 수 있음
+ALLOWED_ORIGINS = "chrome-extension://*"
 
 # 한도
 ASK_DAILY_PER_INSTALL = "20"

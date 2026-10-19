@@ -1,9 +1,10 @@
+import { resolveModel } from "./models.js";
 // AI 모델 연결부. 확장은 우리 Worker 주소만 알고, 어떤 회사·모델을 쓰는지는 여기 + 환경 설정에만 있다.
-// 모델을 바꿀 때: wrangler 설정(AI_PROVIDER, AI_MODEL, 요금)만 바꾸면 된다. 확장은 다시 배포하지 않는다.
+// 모델을 바꿀 때: wrangler.toml의 AI_PRESET 한 줄만 바꾼다 (목록·요금은 models.js). 확장은 다시 배포하지 않는다.
 //
 // 모든 연결부는 같은 모양으로 부르고 같은 모양으로 돌려준다:
 //   callModel(env, { system, user, tool: {name, description, schema}, maxTokens })
-//   → { output: tool 입력(JSON 객체), usage: { input, output }, model }
+//   → { output: tool 입력(JSON 객체), usage: { input, output }, model, preset, cost }
 // "정해진 형식으로만 답하기"는 각 회사의 도구 호출(tool / function calling) 기능으로 강제한다.
 
 const TIMEOUT_MS = 20000;
@@ -21,15 +22,29 @@ async function postJSON(url, headers, body) {
   }
 }
 
+// Gemini는 함수 매개변수에 JSON Schema 일부만 받는다 → 모르는 키는 빼고 보낸다(설명·종류·목록·필수 등만 남김)
+const GEMINI_SCHEMA_KEYS = new Set(["type", "description", "enum", "properties", "required", "items", "maxItems", "minItems", "minimum", "maximum", "nullable", "format"]);
+export function geminiSchema(s) {
+  if (Array.isArray(s)) return s.map(geminiSchema);
+  if (!s || typeof s !== "object") return s;
+  const out = {};
+  for (const [k, v] of Object.entries(s)) {
+    if (!GEMINI_SCHEMA_KEYS.has(k)) continue;
+    if (k === "properties") out[k] = Object.fromEntries(Object.entries(v).map(([n, sub]) => [n, geminiSchema(sub)]));
+    else if (k === "items") out[k] = geminiSchema(v);
+    else out[k] = v;
+  }
+  return out;
+}
+
 const PROVIDERS = {
   // Anthropic Messages API (도구 하나를 강제로 쓰게 해서 JSON만 받는다)
-  async anthropic(env, { system, user, tool, maxTokens }) {
-    const model = env.AI_MODEL || "claude-haiku-5-5";
+  async anthropic(m, { system, user, tool, maxTokens }) {
     const data = await postJSON(
       "https://api.anthropic.com/v1/messages",
-      { "x-api-key": env.ANTHROPIC_API_KEY, "anthropic-version": "2023-06-01" },
+      { "x-api-key": m.key, "anthropic-version": "2023-06-01" },
       {
-        model,
+        model: m.model,
         max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: user }],
@@ -39,19 +54,49 @@ const PROVIDERS = {
     );
     const block = (data.content || []).find((b) => b.type === "tool_use" && b.name === tool.name);
     if (!block) throw new Error("model returned no tool output");
-    return { output: block.input, usage: { input: data.usage?.input_tokens || 0, output: data.usage?.output_tokens || 0 }, model };
+    return { output: block.input, usage: { input: data.usage?.input_tokens || 0, output: data.usage?.output_tokens || 0 } };
+  },
+
+  // Google Gemini generateContent (함수 하나만 부르게 강제: functionCallingConfig mode ANY + allowedFunctionNames)
+  //  10/20 공식 API 문서로 주소·mode ANY·allowedFunctionNames·usageMetadata 이름 확인. 생각 토큰은 출력 요금으로 청구 → 비용 계산에 더함
+  //  thinkingConfig(생각 줄이기)는 이름을 공식 문서에서 다 확인하지 못함 → 400이 나면 그 설정을 빼고 한 번 더
+  async gemini(m, { system, user, tool, maxTokens }) {
+    const generationConfig = { maxOutputTokens: maxTokens, ...(m.thinking ? { thinkingConfig: m.thinking } : {}) };
+    const req = () => postJSON(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m.model)}:generateContent`,
+      { "x-goog-api-key": m.key },
+      {
+        systemInstruction: { parts: [{ text: system }] },
+        contents: [{ role: "user", parts: [{ text: user }] }],
+        tools: [{ functionDeclarations: [{ name: tool.name, description: tool.description, parameters: geminiSchema(tool.schema) }] }],
+        toolConfig: { functionCallingConfig: { mode: "ANY", allowedFunctionNames: [tool.name] } },
+        generationConfig,
+      }
+    );
+    let data;
+    try {
+      data = await req();
+    } catch (err) {
+      if (err.status !== 400 || !generationConfig.thinkingConfig) throw err;
+      delete generationConfig.thinkingConfig;
+      data = await req();
+    }
+    const parts = data.candidates?.[0]?.content?.parts || [];
+    const call = parts.find((p) => p.functionCall?.name === tool.name)?.functionCall;
+    if (!call) throw new Error("model returned no tool output");
+    const u = data.usageMetadata || {};
+    return { output: call.args || {}, usage: { input: u.promptTokenCount || 0, output: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } };
   },
 
   // OpenAI 호환 Chat Completions (OpenAI, 그리고 같은 형식을 지원하는 다른 회사 주소로도 쓸 수 있게 주소를 설정값으로)
-  // ※ 아직 실제 호출로 시험하지 않음. 모델을 바꿀 때 worker/test의 고정 문제 묶음으로 먼저 확인할 것
-  async openai_compat(env, { system, user, tool, maxTokens }) {
-    const model = env.AI_MODEL;
-    const base = (env.AI_BASE_URL || "https://api.openai.com/v1").replace(/\/$/, "");
+  // ※ 아직 실제 호출로 시험하지 않음. 모델을 바꿀 때 worker/eval의 고정 문제 묶음으로 먼저 확인할 것
+  async openai_compat(m, { system, user, tool, maxTokens }) {
+    const base = (m.base || "https://api.openai.com/v1").replace(/\/$/, "");
     const data = await postJSON(
       `${base}/chat/completions`,
-      { authorization: `Bearer ${env.AI_API_KEY}` },
+      { authorization: `Bearer ${m.key}` },
       {
-        model,
+        model: m.model,
         max_tokens: maxTokens,
         messages: [
           { role: "system", content: system },
@@ -63,34 +108,39 @@ const PROVIDERS = {
     );
     const call = data.choices?.[0]?.message?.tool_calls?.find((c) => c.function?.name === tool.name);
     if (!call) throw new Error("model returned no tool output");
-    return { output: JSON.parse(call.function.arguments || "{}"), usage: { input: data.usage?.prompt_tokens || 0, output: data.usage?.completion_tokens || 0 }, model };
+    return { output: JSON.parse(call.function.arguments || "{}"), usage: { input: data.usage?.prompt_tokens || 0, output: data.usage?.completion_tokens || 0 } };
   },
 
   // 시험용 가짜 모델 (키·결제 없이 서버 동작을 확인). env.MOCK(args) 가 돌려준 값을 그대로 쓴다
-  async mock(env, args) {
+  async mock(m, args, env) {
+    if (typeof env.MOCK !== "function") throw new Error("mock needs env.MOCK");
     const output = await env.MOCK(args);
-    return { output, usage: { input: Math.ceil(args.user.length / 2), output: 120 }, model: "mock" };
+    return { output, usage: { input: Math.ceil(args.user.length / 2), output: 120 } };
   },
 };
 
+/** 모델 부르기: { output, usage, model, cost(백만분의 1달러) }. 기본 모델이 실패하면 예비 모델(AI_FALLBACK_PRESET)로 한 번만 더 */
 export async function callModel(env, args) {
-  const name = env.AI_PROVIDER || "anthropic";
-  const fn = PROVIDERS[name];
-  if (!fn) throw new Error(`unknown provider ${name}`);
-  try {
-    return await fn(env, args);
-  } catch (err) {
-    // 예비 모델: 기본 모델이 실패하면 설정된 예비로 한 번만 더
-    if (env.AI_FALLBACK_PROVIDER && env.AI_FALLBACK_PROVIDER !== name && PROVIDERS[env.AI_FALLBACK_PROVIDER]) {
-      return PROVIDERS[env.AI_FALLBACK_PROVIDER]({ ...env, AI_MODEL: env.AI_FALLBACK_MODEL }, args);
+  const tries = [resolveModel(env), resolveModel(env, "FALLBACK")].filter(Boolean);
+  let lastErr;
+  for (const m of tries) {
+    const fn = PROVIDERS[m.provider];
+    if (!fn) throw new Error(`unknown provider ${m.provider}`);
+    if (m.provider !== "mock" && !m.key) {
+      lastErr = new Error(`missing key for ${m.name}`);
+      continue;
     }
-    throw err;
+    try {
+      const r = await fn(m, args, env);
+      return { ...r, model: m.model, preset: m.name, cost: costMicroUSD(m, r.usage) };
+    } catch (err) {
+      lastErr = err;
+    }
   }
+  throw lastErr;
 }
 
-/** 사용한 토큰 → 비용(백만분의 1달러). 요금은 설정값(100만 토큰당 달러) */
-export function costMicroUSD(env, usage) {
-  const pin = Number(env.PRICE_IN_PER_MTOK ?? 0.1); // Haiku 5.5 기준 (10만 토큰 이하 요청)
-  const pout = Number(env.PRICE_OUT_PER_MTOK ?? 0.5);
-  return Math.ceil(usage.input * pin + usage.output * pout); // (토큰 × 달러/100만) × 100만
+/** 사용한 토큰 → 비용(백만분의 1달러). 요금은 프리셋(100만 토큰당 달러) */
+export function costMicroUSD(m, usage) {
+  return Math.ceil(usage.input * m.in + usage.output * m.out); // (토큰 × 달러/100만) × 100만
 }

@@ -12,7 +12,7 @@
 //    → 누가 가짜 안내문을 보내도 그 가짜 글의 해시에만 묶여서, 진짜 글을 가진 다른 학생에게는 영향이 없다.
 //  - 딴짓 질문 막기: 답 형식 고정(번호 + 짧은 이유), 답 길이 상한, 범위 밖 판정, 입력 검사, 1인·전체 하루 한도.
 
-import { callModel, costMicroUSD } from "./providers.js";
+import { callModel } from "./providers.js";
 import { D1Store, MemoryStore } from "./store.js";
 import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATEGORIES } from "./prompts.js";
 
@@ -39,7 +39,9 @@ const day = (d = new Date()) => d.toISOString().slice(0, 10);
 function cors(env, req) {
   const origin = req.headers.get("origin") || "";
   const allowed = String(env.ALLOWED_ORIGINS || "").split(",").map((s) => s.trim()).filter(Boolean);
-  const ok = allowed.includes(origin);
+  // "chrome-extension://*" = 모든 크롬 확장 출처 허용 (압축 해제로 설치하면 사람마다 확장 ID가 달라서). 웹사이트 출처는 막힘.
+  //  ※ 출처는 브라우저 밖에서 흉내 낼 수 있으니 진짜 방어는 설치별·전체 하루 한도와 비용 상한
+  const ok = !!origin && allowed.some((a) => (a.endsWith("*") ? origin.startsWith(a.slice(0, -1)) && origin.length > a.length - 1 : a === origin));
   return {
     ok,
     headers: ok
@@ -65,7 +67,7 @@ async function checkQuota(store, env, kind, install) {
   if (n > perUser) return { ok: false, reason: "user" };
   return { ok: true };
 }
-const recordCost = (store, env, usage) => store.incr(`cost:${day()}`, costMicroUSD(env, usage), 2 * 86400);
+const recordCost = (store, r) => store.incr(`cost:${day()}`, r.cost, 2 * 86400);
 
 // ---------- 입력 검사 ----------
 const str = (v, max) => typeof v === "string" && v.length <= max;
@@ -87,7 +89,7 @@ function validAskBody(b) {
 }
 
 /** 모델 답 정리: 주어진 번호만, 이유 40자, 안내 120자. 범위 밖이면 정해진 문구 */
-function cleanAnswer(out, context) {
+export function cleanAnswer(out, context) {
   const ids = new Set(["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
   const intent = ASK_INTENTS.includes(out?.intent) ? out.intent : "out_of_scope";
   if (intent === "out_of_scope") return { intent, picks: [], message: OUT_OF_SCOPE_MSG };
@@ -159,7 +161,7 @@ export async function handle(req, env, { store }) {
         tool: ASK_TOOL,
         maxTokens: Number(env.ASK_MAX_TOKENS ?? 400),
       });
-      await recordCost(store, env, r.usage);
+      await recordCost(store, r);
       return json(200, { ...cleanAnswer(r.output, body.context), model: r.model }, c.headers);
     } catch (err) {
       return json(502, { error: "model", mode: "template" }, c.headers);
@@ -177,7 +179,7 @@ export async function handle(req, env, { store }) {
     if (!q.ok) return json(429, { error: "limit", reason: q.reason }, c.headers);
     try {
       const r = await callModel(env, { system: CLASSIFY_SYSTEM, user: `안내문:\n${text}`, tool: CLASSIFY_TOOL, maxTokens: Number(env.CLASSIFY_MAX_TOKENS ?? 700) });
-      await recordCost(store, env, r.usage);
+      await recordCost(store, r);
       const result = cleanClassify(r.output);
       if (!result) return json(502, { error: "model_format" }, c.headers);
       await store.putClassify(hash, programId, result, r.model);

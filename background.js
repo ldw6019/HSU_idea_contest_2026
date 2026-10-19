@@ -5,6 +5,8 @@
 import { getOrFetch, clearAll, TTL } from "./core/cache.js";
 import { toPlainError } from "./core/errors.js";
 import { fetchTimetable } from "./adapters/info.js";
+import { AI_ENDPOINT } from "./core/config.js";
+import { askRemote } from "./core/ai.js";
 
 const SITES = {
   hsportal: {
@@ -97,11 +99,32 @@ async function fetchText({ url }) {
   return { ok: res.ok, status: res.status, finalPath: new URL(res.url).pathname, text };
 }
 
+// ---------- AI 서버 (10/20) ----------
+// 화면(content script)에서 부르면 요청 출처가 e클래스 주소가 돼서 서버 출처 검사에 막힌다 → 여기서 부른다.
+// 서버 주소는 core/config.js. host_permissions에 넣지 않아도 서버가 확장 출처를 CORS로 허용하므로 권한을 늘리지 않음.
+// 설치 ID: 이 크롬에서 무작위로 한 번 만든 값 (하루 한도 세기용, 학번·이름과 무관). "내 데이터 모두 지우기"로 새로 만들어짐
+async function installId() {
+  const { "ai:install": id } = await chrome.storage.local.get("ai:install");
+  if (id) return id;
+  const nid = crypto.randomUUID();
+  await chrome.storage.local.set({ "ai:install": nid });
+  return nid;
+}
+async function aiAsk({ question, context }) {
+  if (!AI_ENDPOINT) return { ok: false, status: 0, reason: "off" };
+  try {
+    return await askRemote(AI_ENDPOINT, await installId(), question, context);
+  } catch (err) {
+    return { ok: false, status: 0, reason: err?.name === "AbortError" ? "timeout" : "network" };
+  }
+}
+
 const HANDLERS = {
   fetchText: (msg) => fetchText(msg),
   checkLogin: () => Promise.all(Object.keys(SITES).map(checkSite)),
   getTimetable: (msg) => getTimetable(msg),
   clearCache: () => clearAll(),
+  aiAsk: (msg) => aiAsk(msg),
 };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

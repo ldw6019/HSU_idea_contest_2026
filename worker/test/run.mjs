@@ -57,6 +57,16 @@ check("설치 ID 없으면 거절", r.status === 400);
 r = await call("/v1/ask", null, { raw: "{" + " ".repeat(17000) + "}" });
 check("큰 본문 거절", r.status === 413);
 
+// 5-2) 와일드카드 출처: 모든 확장 허용, 웹사이트는 막음
+{
+  const env2 = { ...env, ALLOWED_ORIGINS: "chrome-extension://*" };
+  const c2 = (origin) => handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin, "x-hsup-install": INSTALL, "content-type": "application/json" }, body: JSON.stringify({ question: "요약", context }) }), env2, { store: new MemoryStore() }).then((r) => r.status);
+  mockOut = { intent: "today", picks: [], message: "ok" };
+  check("확장 출처(*) 허용", (await c2("chrome-extension://abcdefghijklmnop")) === 200);
+  check("웹사이트 출처 막음", (await c2("https://learn.hansung.ac.kr")) === 403);
+  check("빈 확장 출처 막음", (await c2("chrome-extension://")) === 403);
+}
+
 // 6) 하루 전체 비용 상한
 store = new MemoryStore();
 await store.incr(`cost:${new Date().toISOString().slice(0, 10)}`, 1_000_000, 86400);

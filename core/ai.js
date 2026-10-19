@@ -299,8 +299,7 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
 /**
  * (AI 연결 후) 서버에 묻기. 서버 주소가 없으면 쓰지 않는다.
  * 서버는 { intent, picks: [{id, reason}], message } 형식만 돌려준다 (worker/ 참고).
- * ※ 연결할 때는 이 함수를 background.js에서 부른다: 화면(content script)에서 부르면 출처가 e클래스 주소가 돼서
- *   서버의 출처 검사(chrome-extension://확장ID만 허용)에 막힌다. manifest host_permissions에 서버 주소도 추가.
+ * ※ background.js에서 부른다: 화면(content script)에서 부르면 출처가 e클래스 주소가 돼서 서버의 출처 검사에 막힌다.
  */
 export async function askRemote(endpoint, installId, question, context, { timeoutMs = 15000 } = {}) {
   const ctrl = new AbortController();
@@ -313,7 +312,7 @@ export async function askRemote(endpoint, installId, question, context, { timeou
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, status: res.status, mode: data.mode || null, message: data.message || null };
+    if (!res.ok) return { ok: false, status: res.status, reason: data.reason || data.error || null };
     return { ok: true, ...data };
   } finally {
     clearTimeout(timer);

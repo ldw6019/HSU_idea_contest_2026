@@ -1750,7 +1750,8 @@
     import(chrome.runtime.getURL("core/calendar.js")),
     import(chrome.runtime.getURL("core/points.js")),
     import(chrome.runtime.getURL("adapters/hansung.js")),
-  ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung }));
+    import(chrome.runtime.getURL("core/config.js")),
+  ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung, config]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung, config }));
 
   // 다른 학교 사이트 페이지 글은 백그라운드가 받아 준다
   async function getText(url) {
@@ -2468,7 +2469,20 @@
   //  → 이 "기본 답변"은 AI 연결 뒤에도 하루 한도를 넘었거나 서버가 안 될 때 그대로 쓰인다.
   // 답은 "문장 한 줄 + 실제 항목 카드". 날짜·마감은 항상 학교에서 가져온 값으로 그린다.
   // 질문 판단·보낼 정보 정리는 core/ai.js
-  const AI_ENDPOINT = ""; // AI 서버(Cloudflare Worker) 주소. 비어 있으면 기본 답변만
+  // AI 연결(10/20): 추천 버튼은 기본 답변(빠르고 정확, 비용 0), 직접 쓴 질문만 AI 서버에 묻는다 (사용자 결정)
+  //  서버 주소는 core/config.js. 서버가 안 되거나 하루 한도를 넘으면 기본 답변 + 한 줄 안내
+  let AI_ENDPOINT = "";
+  mods.then((m) => {
+    AI_ENDPOINT = m.config.AI_ENDPOINT || "";
+    if (current === "ai") renderAI();
+  });
+  let aiBusy = false;
+  const AI_FAIL_NOTE = {
+    user: "오늘 AI 질문 횟수를 다 써서 기본 답변으로 보여 드려요. 내일 다시 쓸 수 있어요.",
+    rate: "질문이 너무 빨라요. 잠깐 뒤에 다시 물어봐 주세요. 우선 기본 답변이에요.",
+    global: "오늘 AI 사용량이 많아 기본 답변으로 보여 드려요.",
+    default: "AI 서버에 연결하지 못해 기본 답변으로 보여 드려요.",
+  };
   const chat = []; // { who: "me"|"bot", text, picks?, note? } (이 탭을 연 동안만 기억)
   let aiPreviewOpen = false;
 
@@ -2515,11 +2529,35 @@
     chat.push({ who: "me", text: q });
     const built = ai.buildContext(aiData());
     const intent = presetId || ai.detectIntent(q);
+    let failNote = null;
+    // 직접 쓴 질문 + AI 서버 있음 → 서버에 묻는다 (보내는 건 "AI에 보낼 내용 보기"와 같은 내용)
+    if (!presetId && AI_ENDPOINT) {
+      if (aiBusy) return chat.pop();
+      aiBusy = true;
+      chat.push({ who: "bot", text: "생각하는 중…", pending: true });
+      renderAI({ scroll: true });
+      let r;
+      try {
+        r = await send({ type: "aiAsk", question: q, context: built.context });
+      } catch (err) {
+        if (isDeadContext(err)) return onDeadContext();
+        r = { ok: false };
+      }
+      aiBusy = false;
+      chat.pop(); // "생각하는 중…"
+      if (r?.ok) {
+        const picks = (r.picks || []).map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref);
+        chat.push({ who: "bot", text: r.message || (picks.length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), picks, ai: true });
+        while (chat.length > 30) chat.shift();
+        return renderAI({ scroll: true });
+      }
+      failNote = AI_FAIL_NOTE[r?.reason] || AI_FAIL_NOTE.default;
+    }
     const a =
       intent === "academic" && !acadOn()
         ? { text: "학사일정 보기를 꺼 두었어요. 캘린더 탭 아래나 '연결 상태 · 설정'의 학사일정 스위치를 켜면 알려 드릴게요.", picks: [] }
         : ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
-    chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: a.note });
+    chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: [failNote, a.note].filter(Boolean).join(" ") || null });
     while (chat.length > 30) chat.shift();
     renderAI({ scroll: true });
   }
@@ -2568,17 +2606,18 @@
     if (current !== "ai") return;
     const loadingAny = eclassLoading || programsLoading || mineLoading || loading;
     const head = el("div", { class: "ai-head" }, [
-      el("div", { class: "ai-title" }, [el("strong", { text: "HSU PLUS AI" }), el("span", { class: "ai-mode", text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
+      el("div", { class: "ai-title" }, [el("strong", { text: "HSU PLUS AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? " on" : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
       el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
     ]);
 
     const log = el("div", { class: "chat" });
     log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." })]));
     for (const m of chat) {
-      const bubble = el("div", { class: "bubble", text: m.text });
+      const bubble = el("div", { class: `bubble${m.pending ? " pending" : ""}`, text: m.text });
       const parts = [bubble];
       if (m.picks?.length) parts.push(el("div", { class: "ai-picks" }, m.picks.map(pickRow)));
       if (m.note) parts.push(el("div", { class: "ai-note", text: m.note }));
+      if (m.ai) parts.push(el("div", { class: "ai-tag", text: "AI 답변 · 날짜·마감은 학교 정보 그대로" }));
       log.appendChild(el("div", { class: `msg ${m.who}` }, parts));
     }
 
@@ -2598,12 +2637,12 @@
     input.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.isComposing) send();
     });
-    const form = el("div", { class: "ai-form" }, [input, el("button", { class: "btn", text: "보내기", onclick: send })]);
+    const form = el("div", { class: "ai-form" }, [input, el("button", { class: "btn", text: "보내기", disabled: aiBusy ? "" : null, onclick: send })]);
 
     // 보낼 내용 보기: AI 연결 뒤 실제로 나가게 될 정보를 그대로 보여 준다 (지금은 아무것도 나가지 않음)
     const preview = el("details", { class: "ai-preview" }, [
       el("summary", { text: "AI에 보낼 내용 보기" }),
-      el("p", { class: "ai-note", text: AI_ENDPOINT ? "질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." : "지금은 AI 연결 전이라 아무것도 밖으로 보내지 않아요. 연결되면 질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." }),
+      el("p", { class: "ai-note", text: AI_ENDPOINT ? "직접 쓴 질문을 보낼 때만 질문과 아래 내용을 보내요(위 버튼은 보내지 않아요). 이름·학번·성적·연락처는 보내지 않고, 서버는 저장하지 않아요." : "지금은 AI 연결 전이라 아무것도 밖으로 보내지 않아요. 연결되면 질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." }),
       el("pre", { class: "ai-json" }),
     ]);
     if (aiPreviewOpen) preview.open = true;

@@ -816,3 +816,10 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 .ct-row { align-items: center; }
 .set-opts { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; }
 .set-opt-label { font-size: 12px; font-weight: 700; color: var(--ot-sub); }
+
+/* ---------- AI 연결 (10/20) ---------- */
+.bubble.pending { color: var(--ot-muted); animation: ot-pulse 1.2s ease-in-out infinite; }
+@keyframes ot-pulse { 50% { opacity: 0.45; } }
+.ai-tag { margin: 4px 2px 0; font-size: 10.5px; color: var(--ot-muted); }
+.ai-mode.on::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--ot-primary); vertical-align: 1px; }
+@media (prefers-reduced-motion: reduce) { .bubble.pending { animation: none; } }
