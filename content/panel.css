@@ -749,3 +749,18 @@ button:focus-visible, a:focus-visible, summary:focus-visible, input:focus-visibl
 .badge.ev { background: var(--ot-ev-bg); color: var(--ot-ev); }
 .badge.acad { background: #eef1f5; color: #3d4a5e; }
 button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; }
+
+/* ---------- 매주 반복 일정(알바·학원) · 상세 일정 링크 (10/20) ---------- */
+.ev-sub { margin: -2px 0 0; font-size: 11.5px; color: var(--ot-sub); line-height: 1.5; }
+.wd-pick { display: flex; gap: 4px; }
+.wd { flex: 1; min-width: 0; padding: 6px 0; border: 1px solid #cfd5e0; border-radius: 8px; background: #fff; font: inherit; font-size: 12.5px; font-weight: 700; color: var(--ot-sub); cursor: pointer; }
+.wd:hover { border-color: var(--ot-ev); }
+.wd.on { background: var(--ot-ev); border-color: var(--ot-ev); color: #fff; }
+/* 매주 반복 일정 블록: 직접 넣은 일정과 같은 보라, 바탕을 옅게 채워 수업처럼 "고정"으로 보이게 */
+.tt-block.fix { background: var(--ot-ev-bg); color: #4b2fa8; border: 1.5px solid #b9a6ef; text-align: left; font: inherit; font-size: 11px; cursor: pointer; box-shadow: none; }
+.tt-block.fix .tt-tag { background: #8b6be0; }
+.tt-block.fix .tt-place { color: #6c5aa8; }
+.dr-kind.k-fix { background: var(--ot-ev-bg); color: var(--ot-ev); }
+.detail-link { font-size: 11.5px; font-weight: 600; color: var(--ot-primary); text-decoration: none; white-space: nowrap; }
+.detail-link:hover { text-decoration: underline; }
+.ap-actions { align-items: center; }

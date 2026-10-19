@@ -330,6 +330,9 @@
    * "2026-2학기 집단상담 프로그램" → "집단상담", "[재맞고]26-2학기 AI 실무…" → "AI 실무…", "2026학년도 2학기 학습법 워크숍" → "학습법 워크숍"
    * 학기·연도 머리말, 맨 앞 [머리표], 끝의 "프로그램"만 뗀다. 원래 이름은 마우스를 올리거나 그날 목록에서 보인다.
    */
+  // 비교과 일정은 자동 분류라 완벽하지 않음 → 학교 상세 화면 바로가기 (10/20 사용자)
+  const detailLink = (url) =>
+    url ? el("a", { class: "detail-link", href: url, target: "_blank", rel: "noopener", title: "일정 분류는 자동이라 틀릴 수 있어요. 정확한 일정은 학교 상세 화면에서 확인하세요.", text: "상세 일정 확인 ↗" }) : null;
   function shortTitle(t) {
     const orig = String(t || "").trim();
     let s = orig.replace(/^(\[[^\]]{1,12}\]\s*)+/, "");
@@ -392,8 +395,33 @@
   }
   const eventList = () =>
     Object.entries(events)
-      .map(([id, ev]) => ({ id, ev, tm: evTime(ev) }))
+      .map(([id, ev]) => ({ id, ev, tm: ev.w ? null : evTime(ev) }))
       .filter((x) => x.tm);
+  // 매주 반복 일정 (알바·학원 등, 10/20): { t, w: [요일 0=일…6=토], s, e, from, until, p, n }
+  const fixedList = () => Object.entries(events).filter(([, ev]) => Array.isArray(ev.w) && ev.w.length && ev.s && ev.e).map(([id, ev]) => ({ id, ev }));
+  /** from~to 안의 매주 반복 일정 회차들 */
+  function fixedOccurrences(from, to) {
+    const out = [];
+    for (const { id, ev } of fixedList()) {
+      for (let d = dayStart(from); d < to; d = addDays(d, 1)) {
+        const key = ymd(d);
+        if (!ev.w.includes(d.getDay()) || (ev.from && key < ev.from) || (ev.until && key > ev.until)) continue;
+        out.push({ kind: "fix", id, ev, title: ev.t, place: ev.p, start: fromYmd(key, ev.s), end: fromYmd(key, ev.e), allDay: false });
+      }
+    }
+    return out;
+  }
+  const BYDAY = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"];
+  /** 매주 반복 → 캘린더 반복 규칙 (구글 링크·.ics) */
+  const fixedRule = (ev) => `FREQ=WEEKLY;BYDAY=${ev.w.map((d) => BYDAY[d]).join(",")}${ev.until ? `;UNTIL=${ev.until.replace(/-/g, "")}T235959` : ""}`;
+  /** 지금 이어지고 있는 매주 반복 일정 → 수업처럼 "매주 이 요일 이 시각"으로 (비교과 겹침 확인용) */
+  function fixedSlots(now = new Date()) {
+    const today = ymd(now);
+    const m = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+    return fixedList()
+      .filter(({ ev }) => !ev.until || ev.until >= today)
+      .flatMap(({ ev }) => ev.w.map((day) => ({ day, from: m(ev.s), to: m(ev.e), name: ev.t })));
+  }
 
   // ---- 내 비교과 회차 (날짜·시각이 정해진 것 + 매주 회차 + 며칠짜리) ----
   // 매주 회차(예: 11/3 10:00 ~ 11/24 13:00, "3시간*4회")는 공개 상세 화면 안내문까지 보고 판단한다 (core/classify.js)
@@ -459,7 +487,7 @@
 
   /** from~to의 캘린더 항목. kind: prog / ev / due (수업은 주간에서 따로) */
   function calItems(from, to) {
-    const out = mySessions(from, to);
+    const out = [...mySessions(from, to), ...fixedOccurrences(from, to)];
     for (const it of deadlines()) {
       const day = dueDay(it.due); // 0시 마감은 전날 24:00
       if (day >= from && day < to) out.push({ kind: "due", it, title: it.title, sub: [DUE_NOUN[it.type], it.course].filter(Boolean).join(" · "), start: dayStart(day), end: dayStart(day), allDay: true, url: it.url, due: it.due });
@@ -548,7 +576,7 @@
       el("ul", { class: "wl-tabs" }, [
         tip("이번 주", "남은 강의·과제·퀴즈·비교과를 마감 순으로. 출석이 어려운 강의도 미리 알려줘요"),
         tip("캘린더", "시간표 + 비교과 + 마감을 주간·월간으로. 톡방 공지 일정은 직접 넣기"),
-        tip("비교과", "신청할 만한 것(수업과 안 겹치는 것만 보기), 졸업 포인트, 안 낸 설문"),
+        tip("비교과", "신청할 만한 것(수업·알바와 안 겹치는 것만 보기), 졸업 포인트, 안 낸 설문"),
         tip("AI", "\"오늘 뭐 해야 돼?\"처럼 물어보면 실제 항목으로 답해요"),
       ]),
       el("p", { class: "wl-note", text: "학생이 만든 프로토타입이에요(학교 공식 서비스 아님). 학교 사이트는 읽기만 하고 신청·제출은 하지 않아요. 성적·연락처는 읽지 않아요." }),
@@ -636,7 +664,7 @@
 
   function openEventForm(init = {}) {
     const today = ymd(new Date());
-    evDraft = { mode: "time", t: "", d: calDay || today, m: (calDay || today).slice(0, 7), s: "10:00", e: "11:00", p: "", n: "", g: null, ...init };
+    evDraft = { mode: "time", t: "", d: calDay || today, m: (calDay || today).slice(0, 7), s: "10:00", e: "11:00", p: "", n: "", g: null, w: [], from: today, until: "", ...init };
     if (current !== "calendar") {
       current = "calendar";
       renderTabs();
@@ -647,7 +675,8 @@
   function editEvent(id) {
     const ev = events[id];
     if (!ev) return;
-    openEventForm({ id, mode: ev.s ? "time" : ev.d ? "date" : "month", t: ev.t, d: ev.d || ymd(new Date()), m: ev.m || (ev.d || ymd(new Date())).slice(0, 7), s: ev.s || "10:00", e: ev.e || "", p: ev.p || "", n: ev.n || "", g: ev.g || null });
+    const today = ymd(new Date());
+    openEventForm({ id, mode: ev.w ? "weekly" : ev.s ? "time" : ev.d ? "date" : "month", t: ev.t, d: ev.d || today, m: ev.m || (ev.d || today).slice(0, 7), s: ev.s || "10:00", e: ev.e || "", p: ev.p || "", n: ev.n || "", g: ev.g || null, w: ev.w ? [...ev.w] : [], from: ev.from || today, until: ev.until || "" });
   }
 
   function eventForm() {
@@ -672,6 +701,28 @@
     const save = () => {
       const t = (f.t || "").trim().slice(0, 60);
       if (!t) return (err.textContent = "제목을 적어 주세요.");
+      if (f.mode === "weekly") {
+        // 매주 반복 (알바·학원 등 고정 일정)
+        if (!f.w.length) return (err.textContent = "요일을 하나 이상 골라 주세요.");
+        if (!/^\d{2}:\d{2}$/.test(f.s || "") || !/^\d{2}:\d{2}$/.test(f.e || "")) return (err.textContent = "시작·끝 시각을 골라 주세요.");
+        if (f.e <= f.s) return (err.textContent = "끝 시각이 시작보다 늦어야 해요.");
+        if (f.until && f.until < (f.from || "")) return (err.textContent = "끝나는 날이 시작하는 날보다 늦어야 해요.");
+        saveEvent(f.id || newId(), {
+          t,
+          w: [...f.w].sort(),
+          s: f.s,
+          e: f.e,
+          from: /^\d{4}-\d{2}-\d{2}$/.test(f.from || "") ? f.from : null,
+          until: /^\d{4}-\d{2}-\d{2}$/.test(f.until || "") ? f.until : null,
+          p: (f.p || "").trim().slice(0, 40) || null,
+          n: (f.n || "").trim().slice(0, 120) || null,
+          at: events[f.id]?.at || Date.now(),
+        });
+        evDraft = null;
+        if (f.w.some((d) => d === 0 || d === 6)) calWeekendOpen = null; // 주말 고정 일정이면 자동 펼침이 다시 판단하게
+        calMode = "week";
+        return renderCalendar();
+      }
       if (f.mode !== "month" && !/^\d{4}-\d{2}-\d{2}$/.test(f.d || "")) return (err.textContent = "날짜를 골라 주세요.");
       if (f.mode === "month" && !/^\d{4}-\d{2}$/.test(f.m || "")) return (err.textContent = "달을 골라 주세요.");
       if (f.mode === "time" && !/^\d{2}:\d{2}$/.test(f.s || "")) return (err.textContent = "시작 시각을 골라 주세요.");
@@ -694,12 +745,37 @@
     };
     return el("div", { class: "ev-form" }, [
       el("div", { class: "ev-head" }, [el("b", { text: f.id ? "일정 고치기" : "일정 직접 넣기" }), el("span", { class: "ev-hint", text: "이 계정의 크롬 어디서나 보여요" })]),
-      field("제목", inp("t", { class: "ev-input ev-title", maxlength: "60", placeholder: "예: 진로멘토링 2회차" })),
-      el("div", { class: "ev-modes" }, [el("div", { class: "seg-mini-wrap" }, [modeBtn("time", "날짜·시각"), modeBtn("date", "날짜만"), modeBtn("month", "대략 (그 달 중)")])]),
-      f.mode === "month"
-        ? field("달", inp("m", { type: "month" }))
-        : field("날짜", inp("d", { type: "date" })),
-      f.mode === "time" ? el("div", { class: "ev-row" }, [field("시작", inp("s", { type: "time" })), field("끝 (선택)", inp("e", { type: "time" }))]) : null,
+      field("제목", inp("t", { class: "ev-input ev-title", maxlength: "60", placeholder: f.mode === "weekly" ? "예: 카페 알바, 영어 학원" : "예: 진로멘토링 2회차" })),
+      el("div", { class: "ev-modes" }, [el("div", { class: "seg-mini-wrap" }, [modeBtn("time", "날짜·시각"), modeBtn("date", "날짜만"), modeBtn("month", "대략 (그 달 중)"), modeBtn("weekly", "매주 반복")])]),
+      ...(f.mode === "weekly"
+        ? [
+            el("p", { class: "ev-sub", text: "알바·학원처럼 매주 같은 시간에 있는 일정. 주간 캘린더에 수업처럼 보이고, 비교과를 고를 때 겹치는지도 함께 봐요." }),
+            el("div", { class: "ev-field" }, [
+              el("span", { text: "요일" }),
+              el(
+                "div",
+                { class: "wd-pick" },
+                [1, 2, 3, 4, 5, 6, 0].map((d) =>
+                  el("button", {
+                    type: "button",
+                    class: f.w.includes(d) ? "wd on" : "wd",
+                    "aria-pressed": String(f.w.includes(d)),
+                    text: DAY[d],
+                    onclick: () => {
+                      f.w = f.w.includes(d) ? f.w.filter((x) => x !== d) : [...f.w, d];
+                      renderCalendar();
+                    },
+                  })
+                )
+              ),
+            ]),
+            el("div", { class: "ev-row" }, [field("시작", inp("s", { type: "time" })), field("끝", inp("e", { type: "time" }))]),
+            el("div", { class: "ev-row" }, [field("언제부터", inp("from", { type: "date" })), field("언제까지 (선택)", inp("until", { type: "date" }))]),
+          ]
+        : [
+            f.mode === "month" ? field("달", inp("m", { type: "month" })) : field("날짜", inp("d", { type: "date" })),
+            f.mode === "time" ? el("div", { class: "ev-row" }, [field("시작", inp("s", { type: "time" })), field("끝 (선택)", inp("e", { type: "time" }))]) : null,
+          ]),
       field("장소 (선택)", inp("p", { maxlength: "40", placeholder: "예: 상상관 B101, 온라인" })),
       field("메모 (선택)", inp("n", { maxlength: "120", placeholder: "예: 톡방 공지, 준비물" })),
       err,
@@ -736,18 +812,23 @@
     if (!CAL) return null;
     const title = x.kind === "due" ? `[마감] ${x.title}` : x.kind === "prog" ? `${x.title}${x.session ? ` - ${x.session}` : ""}` : x.title;
     const ev = x.kind === "due" ? { title, start: new Date(new Date(x.due).getTime() - 30 * 60000), end: new Date(x.due), url: x.url } : { title, start: x.start, end: x.end, allDay: x.allDay, place: x.place, url: x.url, memo: x.ev?.n };
+    if (x.kind === "fix") ev.rrule = fixedRule(x.ev);
     return el("a", { class: "gcal", href: CAL.googleLink(ev), target: "_blank", rel: "noopener", title: "구글 캘린더에 이 일정을 미리 채운 화면이 열려요 (저장은 직접)", text: "구글 캘린더에 추가" });
   }
   function dayRow(x) {
     const when = x.allDay ? (sameDay(x.start, x.end) ? "종일" : `${dayLabel(x.start)}~${dayLabel(x.end)}`) : `${hm(x.start)}–${hm(x.end)}`;
-    const kindLabel = { prog: x.weekly ? "비교과 · 매주" : "비교과", ev: "내 일정", due: "마감", class: "수업", acad: "학사" }[x.kind];
+    const kindLabel = { prog: x.weekly ? "비교과 · 매주" : "비교과", ev: "내 일정", fix: "매주", due: "마감", class: "수업", acad: "학사" }[x.kind];
     const sub = x.kind === "due" ? `${x.sub} · ${dueText(x.due)}` : [x.session, x.place, x.kind === "ev" ? x.ev?.n : null].filter(Boolean).join(" · ");
     return el("div", { class: `day-row k-${x.kind}` }, [
       el("span", { class: "dr-when", text: x.kind === "due" ? endLabel(x.due).replace(/^.*\) /, "") : when }),
       el("div", { class: "info" }, [
         el("div", { class: "name" }, [el("span", { class: `dr-kind k-${x.kind}`, text: kindLabel }), x.url ? el("a", { href: x.url, target: "_blank", rel: "noopener", text: x.title }) : el("span", { text: x.title })]),
         sub ? el("div", { class: "sub", text: sub }) : null,
-        el("div", { class: "dr-acts" }, [gcalFor(x), x.kind === "ev" ? el("button", { class: "linkish", text: "고치기", onclick: () => editEvent(x.id) }) : null]),
+        el("div", { class: "dr-acts" }, [
+          gcalFor(x),
+          x.kind === "ev" || x.kind === "fix" ? el("button", { class: "linkish", text: "고치기", onclick: () => editEvent(x.id) }) : null,
+          x.kind === "prog" ? detailLink(x.url) : null,
+        ]),
       ]),
     ]);
   }
@@ -793,6 +874,13 @@
       list.push({ uid: `due-${String(it.id).replace(/[^\w-]/g, "").slice(-40)}`, title: `[마감] ${it.title}${it.course ? ` (${it.course})` : ""}`, start: new Date(d.getTime() - 30 * 60000), end: d, url: it.url });
     }
     for (const { id, ev, tm } of eventList()) if (!tm.rough) list.push({ uid: `ev-${id}`, title: ev.t, start: tm.start, end: tm.end, allDay: tm.allDay, place: ev.p, memo: ev.n });
+    // 매주 반복 일정: 반복 규칙 하나로 (첫 회 = 시작일 이후 첫 해당 요일)
+    for (const { id, ev } of fixedList()) {
+      let d = ev.from ? fromYmd(ev.from) : dayStart(new Date());
+      for (let i = 0; i < 7 && !ev.w.includes(d.getDay()); i++) d = addDays(d, 1);
+      if (ev.until && ymd(d) > ev.until) continue;
+      list.push({ uid: `fix-${id}`, title: ev.t, start: fromYmd(ymd(d), ev.s), end: fromYmd(ymd(d), ev.e), place: ev.p, memo: ev.n, rrule: fixedRule(ev) });
+    }
     if (!list.length) {
       calNote = "내보낼 일정이 없어요.";
       return renderCalendar();
@@ -925,7 +1013,8 @@
     const dayIdx = (d) => (d.getDay() + 6) % 7; // 월=0 … 일=6
     // 주말 자동 펼침은 비교과·직접 넣은 일정만 센다 (일요일 23:59 강의 마감이 흔해서 마감까지 세면 늘 펼쳐짐)
     const weekendAllDay = [5, 6].flatMap((c) => allDayOf(addDays(monday, c), allDay));
-    const weekendCount = timed.filter((x) => x.kind !== "class" && dayIdx(x.start) >= 5).length + weekendAllDay.filter((x) => x.kind !== "due").length;
+    // 학사일정(신청 기간)도 주말에 걸치기만 하는 경우가 많아 세지 않음. 매주 반복 일정(알바·학원)이 주말에 있으면 펼침 (10/20)
+    const weekendCount = timed.filter((x) => x.kind !== "class" && dayIdx(x.start) >= 5).length + weekendAllDay.filter((x) => x.kind !== "due" && x.kind !== "acad").length;
     const weekendDues = weekendAllDay.filter((x) => x.kind === "due").length;
     const weekendOpen = calWeekendOpen ?? weekendCount > 0;
     const cols = [0, 1, 2, 3, 4].concat(weekendOpen ? [5, 6] : []);
@@ -1009,18 +1098,18 @@
         const endMin = sameDay(s, e) ? minutesOf(e) : maxH * 60;
         const top = ((minutesOf(s) - minH * 60) / 60) * HOUR_PX;
         const height = Math.max(((endMin - minutesOf(s)) / 60) * HOUR_PX, 18);
-        const tag = x.kind === "prog" ? (x.weekly ? "비교과 · 매주" : "비교과") : x.kind === "ev" ? "내 일정" : null;
+        const tag = x.kind === "prog" ? (x.weekly ? "비교과 · 매주" : "비교과") : x.kind === "ev" ? "내 일정" : x.kind === "fix" ? "매주" : null;
         const tip = `${tag ? `[${tag}] ` : ""}${x.title}${x.session ? `\n${x.session}` : ""}\n${hm(s)}–${hm(e)}\n${[x.place, x.professor].filter(Boolean).join(" · ")}`;
         const isLink = x.kind === "prog" && x.url;
         const block = el(
-          isLink ? "a" : x.kind === "ev" ? "button" : "div",
+          isLink ? "a" : x.kind === "ev" || x.kind === "fix" ? "button" : "div",
           {
             class: ["tt-block", x.kind === "class" ? "" : x.kind, e < now ? "past" : ""].filter(Boolean).join(" "),
             title: tip,
             href: isLink ? x.url : null,
             target: isLink ? "_blank" : null,
             rel: isLink ? "noopener" : null,
-            onclick: x.kind === "ev" ? () => editEvent(x.id) : null,
+            onclick: x.kind === "ev" || x.kind === "fix" ? () => editEvent(x.id) : null,
           },
           [tag ? el("div", { class: "tt-tag", text: tag }) : null, el("div", { class: "tt-name", text: x.kind === "class" ? x.title : shortTitle(x.title) }), x.place ? el("div", { class: "tt-place", text: x.place }) : null]
         );
@@ -1044,7 +1133,7 @@
     parts.push(grid);
     parts.push(
       el("div", { class: "cal-foot" }, [
-        el("span", { class: "tt-legend", text: "흰 칸 내 비교과 · 보라 직접 넣은 일정 · 요일을 누르면 그날 목록" }),
+        el("span", { class: "tt-legend", text: "흰 칸 내 비교과 · 보라 직접 넣은 일정·매주 반복(알바 등) · 요일을 누르면 그날 목록" }),
         el("button", {
         class: "weekend-toggle",
         text: weekendOpen ? "토·일 접기" : `토·일 펼치기${weekendCount || weekendDues ? ` (${[weekendCount ? `일정 ${weekendCount}` : "", weekendDues ? `마감 ${weekendDues}` : ""].filter(Boolean).join(" · ")})` : ""}`,
@@ -1094,7 +1183,7 @@
           })
         : null,
     ]);
-    const items = calItems(gridStart, gridEnd);
+    const items = calItems(gridStart, gridEnd).filter((x) => x.kind !== "fix"); // 매주 반복 일정은 수업처럼 주간에서만
     const parts = [sub];
     // 대략 일정 ("11월 중")
     const rough = eventList().filter((x) => x.tm.rough && x.ev.m === key);
@@ -1919,6 +2008,7 @@
     parts.push(secTitle("시작 대기", g.wait.length), g.wait.length ? rows(g.wait.map(myProgramCard)) : placeholder("시작을 기다리는 비교과가 없어요."));
     parts.push(secTitle("진행 중", g.progress.length), g.progress.length ? rows(g.progress.map(myProgramCard)) : placeholder("진행 중인 비교과가 없어요."));
     if (g.online.length) parts.push(secTitle("온라인", g.online.length, "기간 안에 참여"), rows(g.online.map(onlineRow)));
+    parts.push(el("p", { class: "ap-foot", text: "일정(매주·기간 등)은 자동으로 정리한 것이라 틀릴 수 있어요. 카드를 누르면 학교 상세 화면이 열리니 정확한 일정은 거기서 확인하세요." }));
     return parts;
   }
 
@@ -2055,7 +2145,8 @@
   const progOpen = new Set(); // 회차를 펼친 비교과 번호
   const WD = ["일", "월", "화", "수", "목", "금", "토"];
 
-  const slotsNow = () => (CAL && week?.ok ? CAL.weeklySlots(week.items) : []);
+  // 내 시간표 = 수업 + 매주 반복 일정(알바·학원 등, 10/20)
+  const slotsNow = () => (CAL ? [...(week?.ok ? CAL.weeklySlots(week.items) : []), ...fixedSlots()] : []);
   /** 회차 하나의 수업 겹침: 겹치는 수업 이름들 */
   function sessionClash(s, slots) {
     if (!CAL || !slots.length) return [];
@@ -2132,7 +2223,7 @@
     if (info?.r.online && cat !== "online") tags.push(el("span", { class: "ap-tag", text: "온라인" }));
     const pn = info && pickNote(info);
     if (pn) tags.push(el("span", { class: "ap-tag", text: pn }));
-    if (info?.clashN) tags.push(el("span", { class: "ap-tag clash", text: info.free ? `수업과 겹치는 회차 ${info.clashN}` : "수업과 겹침" }));
+    if (info?.clashN) tags.push(el("span", { class: "ap-tag clash", title: "내 시간표 = 수업 + 매주 반복 일정(알바·학원 등)", text: info.free ? `내 시간표와 겹치는 회차 ${info.clashN}` : "내 시간표와 겹침" }));
     if (info?.minePicked) tags.push(el("span", { class: "ap-tag mine", text: "신청함" }));
 
     const opened = progOpen.has(m.programId);
@@ -2148,9 +2239,9 @@
       ]),
     ]);
     const canAdd = info && ["open", "long_term", "consult"].includes(cat);
-    if ((info && info.sessions.length > 1) || canAdd) {
+    {
       const row = el("div", { class: "ap-actions" }, [
-        info.sessions.length > 1
+        info && info.sessions.length > 1
           ? el("button", {
               class: "linkish",
               text: opened ? "회차 접기" : `회차 ${info.sessions.length}개 보기`,
@@ -2161,6 +2252,8 @@
             })
           : null,
         canAdd ? el("button", { class: "linkish", title: "톡방·문자로 안내받은 일정을 직접 넣어 두면 캘린더에 보여요", text: "일정 직접 넣기", onclick: () => openEventForm({ t: it.title.slice(0, 60), g: m.programId }) }) : null,
+        el("span", { class: "grow" }),
+        detailLink(it.url),
       ]);
       card.appendChild(row);
     }
@@ -2217,11 +2310,11 @@
       )
     );
     const opts = el("div", { class: "ap-opts" }, [
-      el("label", { class: "ap-check", title: week?.ok ? "신청할 수 있는 회차 중 수업과 안 겹치는 게 하나라도 있는 것만" : "시간표를 불러오면 쓸 수 있어요" }, [
+      el("label", { class: "ap-check", title: "신청할 수 있는 회차 중 내 시간표(수업 + 매주 반복 일정)와 안 겹치는 게 하나라도 있는 것만" }, [
         (() => {
           const c = el("input", {
             type: "checkbox",
-            disabled: week?.ok ? null : "",
+            disabled: week?.ok || fixedList().length ? null : "",
             onchange: (e) => {
               progFree = e.target.checked;
               renderPrograms();
@@ -2230,7 +2323,7 @@
           c.checked = progFree;
           return c;
         })(),
-        el("span", { text: "수업과 안 겹치는 것만" }),
+        el("span", { text: "내 시간표와 안 겹치는 것만" }),
       ]),
       el("span", { class: "grow" }),
       el("div", { class: "seg-mini-wrap" }, [
@@ -2251,7 +2344,7 @@
     if (detailProgress) parts.push(el("p", { class: "ap-progress", text: `회차·안내문 확인 중 ${detailProgress.done}/${detailProgress.total} (처음 한 번만 조금 걸려요)` }));
     if (programs.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
     if (!list.length) {
-      parts.push(placeholder(progFree ? "조건에 맞는 비교과가 없어요. '수업과 안 겹치는 것만'을 꺼 보세요." : "이 분류의 접수 중 비교과가 없어요."));
+      parts.push(placeholder(progFree ? "조건에 맞는 비교과가 없어요. '내 시간표와 안 겹치는 것만'을 꺼 보세요." : "이 분류의 접수 중 비교과가 없어요."));
       return parts;
     }
     if (progSort === "due") {
@@ -2260,7 +2353,7 @@
       if (soon.length) parts.push(secTitle("1주일 안에 신청 마감", soon.length), rows(soon.map(applyCard)));
       if (later.length) parts.push(secTitle("그 뒤 마감", later.length), rows(later.map(applyCard)));
     } else parts.push(secTitle("포인트 높은 순", list.length), rows(list.map(applyCard)));
-    parts.push(el("p", { class: "ap-foot", text: "분류는 안내문과 회차 시각으로 자동으로 정한 것이라 틀릴 수 있어요. 신청 전에 상세 화면을 꼭 확인하세요." }));
+    parts.push(el("p", { class: "ap-foot", text: "일정 분류(날짜·시각 확정, 매주, 온라인 등)는 안내문과 회차 시각으로 자동으로 정한 것이라 틀릴 수 있어요. 정확한 일정은 카드의 '상세 일정 확인'에서 학교 화면을 꼭 확인하세요." }));
     return parts;
   }
 
