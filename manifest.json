@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "HSU PLUS",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "한성대 e클래스 안에서 과제·강의·비교과·시간표를 한눈에 보는 통합 학습 도우미 (학생 제작 프로토타입, 학교 공식 서비스 아님)",
   "permissions": [
     "storage"
@@ -9,7 +9,8 @@
   "host_permissions": [
     "https://learn.hansung.ac.kr/*",
     "https://hsportal.hansung.ac.kr/*",
-    "https://info.hansung.ac.kr/*"
+    "https://info.hansung.ac.kr/*",
+    "https://www.hansung.ac.kr/*"
   ],
   "background": {
     "service_worker": "background.js",

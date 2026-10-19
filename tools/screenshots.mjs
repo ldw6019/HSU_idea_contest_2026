@@ -126,15 +126,19 @@ pages["/ko/program/all/view/904"] = detail("hidden", [["2026 AI 해커톤", rel(
 pages["/ko/program/all/view/905"] = detail("checkbox", [["집단상담(수10시)", wk(7 + 2, 10, 0), wk(28 + 2, 13, 0), 65], ["집단상담(목10시)", wk(7 + 3, 10, 0), wk(28 + 3, 13, 0), 65]], "총 12시간(3시간*4회) 집단상담. 운영방식: 대면");
 pages["/ko/program/all/view/201"] = detail("hidden", [["멘토링", rel(-20, 9, 0), rel(40, 23, 45), 15]], "멘토링 일정과 장소는 멘토와 협의하여 결정됩니다.");
 
+// 학교 학사일정 (가짜): 진행 중 신청 하나, 곧 시작하는 신청 하나
+const kdot = (x) => `${x.getFullYear()}.${p2(x.getMonth() + 1)}.${p2(x.getDate())}(Mon)`;
+const acadHtml = `<html><body><div class="desc">${[[rel(-4), rel(5), "트랙선택 신청"], [rel(6), rel(10), "일반 전과신청"], [rel(12), rel(17), "기말고사, 보강 주"]].map(([a, b, t]) => `<dl><dt><span>${kdot(a)} ~ ${kdot(b)}</span></dt><dd><a>${t}</a></dd></dl>`).join("")}</div></body></html>`;
 const toB64 = (s) => Buffer.from(s, "utf8").toString("base64");
 const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker"));
 await sw.evaluate(
-  ({ ttJson, pages, openList }) => {
+  ({ ttJson, pages, openList, acadHtml }) => {
     const mk = (body, u, ct = "text/html; charset=utf-8") => { const r = new Response(body, { status: 200, headers: { "content-type": ct } }); Object.defineProperty(r, "url", { value: u }); return r; };
     // 종합정보는 EUC-KR 화면이지만 시험에서는 UTF-8로 보내고 charset만 맞춘다
     const enc = (s) => new TextEncoder().encode(s);
     globalThis.fetch = async (url) => {
       const u = new URL(String(url));
+      if (u.host === "www.hansung.ac.kr") return mk(acadHtml, u.href);
       if (u.host === "info.hansung.ac.kr") {
         if (u.pathname.includes("dae_h_siganpyo")) return mk(enc(`<html><script>$.ajax({url:'dae_sigan_main_data.jsp',type:'POST',data:{ as_hakbun: '0000000' }});</script>개인시간표조회</html>`), u.href, "text/html; charset=utf-8");
         if (u.pathname.includes("dae_sigan_main_data")) return mk(enc(ttJson), u.href, "text/html; charset=utf-8");
@@ -148,11 +152,13 @@ await sw.evaluate(
       return mk("<html><body></body></html>", u.href);
     };
   },
-  { ttJson: JSON.stringify(events), pages, openList }
+  { ttJson: JSON.stringify(events), pages, openList, acadHtml }
 );
 
-// 직접 넣은 일정 하나 (톡방으로만 공지된 멘토링 모임)
 while (!(await sw.evaluate(() => !!chrome.storage))) await new Promise((r) => setTimeout(r, 100)); // 막 켜진 service worker는 잠깐 storage가 없음
+// 처음 안내는 README 그림에서 뺀다
+await sw.evaluate(() => chrome.storage.local.set({ "ui:welcomed": 1 }));
+// 직접 넣은 일정 하나 (톡방으로만 공지된 멘토링 모임)
 await sw.evaluate((d) => chrome.storage.sync.set({ "ev|demo1": { t: "멘토링 모임", d, s: "16:00", e: "17:30", p: "상상관 302", n: "톡방 공지", g: "201", at: 1 } }), iso(wk(3, 0, 0)));
 
 // ---------- 찍기 ----------

@@ -221,7 +221,11 @@ export async function fetchCourseItems(course, now = new Date()) {
 /** 모든 교과 과목의 과목 정보 + 영상·과제. 과목별 실패는 건너뛰고 기록만 한다. */
 export async function fetchEclass(mainDoc = document) {
   const courses = parseCourses(mainDoc);
-  if (!courses.length) throw new ParseError("e클래스 강좌 목록을 찾지 못했습니다");
+  if (!courses.length) {
+    // 강좌 목록 칸은 있는데 교과 과목이 없으면 방학·학기 초 → 오류가 아니라 "과목 없음" (10/20)
+    if (mainDoc.querySelector("ul.my-course-lists")) return { courses: [], items: [], failed: [], noCourses: true };
+    throw new ParseError("e클래스 강좌 목록을 찾지 못했습니다");
+  }
   const results = await runLimited(courses.map((c) => () => fetchCourseItems(c)), 3);
   const items = [];
   const failed = [];

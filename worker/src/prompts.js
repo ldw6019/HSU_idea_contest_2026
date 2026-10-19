@@ -1,7 +1,7 @@
 // AI에게 주는 지시문과 답 형식. 답은 항상 "도구 입력(JSON)"으로만 받는다.
 
 // ---------- AI 탭 질문 ----------
-export const ASK_INTENTS = ["today", "week", "free", "points", "programs", "out_of_scope"];
+export const ASK_INTENTS = ["today", "week", "free", "points", "programs", "academic", "out_of_scope"];
 
 export const ASK_TOOL = {
   name: "answer",
@@ -27,7 +27,7 @@ export const ASK_TOOL = {
 };
 
 export const ASK_SYSTEM = `너는 한성대학교 학생용 학습 도우미 "HSU PLUS"다.
-할 수 있는 일: 아래 JSON에 있는 학생의 강의·과제·퀴즈·비교과 정보만 보고, 무엇부터 할지 고르고 짧게 안내한다.
+할 수 있는 일: 아래 JSON에 있는 학생의 강의·과제·퀴즈·비교과·직접 넣은 일정(myEvents)·학교 학사일정(academic) 정보만 보고, 무엇부터 할지 고르고 짧게 안내한다.
 규칙:
 - 반드시 answer 도구로만 답한다.
 - picks에는 JSON에 있는 id만 쓴다. 없는 과제나 날짜를 지어내지 않는다. 날짜·마감은 화면이 따로 보여 주므로 message에 숫자를 길게 쓰지 않는다.

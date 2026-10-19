@@ -74,7 +74,7 @@ function validAskBody(b) {
   if (!str(b.question, LIMITS.questionChars) || !b.question.trim()) return "question";
   const c = b.context;
   if (!c || typeof c !== "object") return "context";
-  const lists = { tasks: LIMITS.maxTasks, myPrograms: 20, surveys: 10, openPrograms: LIMITS.maxPrograms };
+  const lists = { tasks: LIMITS.maxTasks, myPrograms: 20, surveys: 10, myEvents: 10, academic: 8, openPrograms: LIMITS.maxPrograms };
   for (const [k, max] of Object.entries(lists)) {
     const v = c[k] ?? [];
     if (!Array.isArray(v) || v.length > max) return k;
@@ -88,7 +88,7 @@ function validAskBody(b) {
 
 /** 모델 답 정리: 주어진 번호만, 이유 40자, 안내 120자. 범위 밖이면 정해진 문구 */
 function cleanAnswer(out, context) {
-  const ids = new Set(["tasks", "myPrograms", "surveys", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
+  const ids = new Set(["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
   const intent = ASK_INTENTS.includes(out?.intent) ? out.intent : "out_of_scope";
   if (intent === "out_of_scope") return { intent, picks: [], message: OUT_OF_SCOPE_MSG };
   const seen = new Set();
