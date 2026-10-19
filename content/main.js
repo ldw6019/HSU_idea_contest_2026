@@ -330,6 +330,15 @@
    * "2026-2학기 집단상담 프로그램" → "집단상담", "[재맞고]26-2학기 AI 실무…" → "AI 실무…", "2026학년도 2학기 학습법 워크숍" → "학습법 워크숍"
    * 학기·연도 머리말, 맨 앞 [머리표], 끝의 "프로그램"만 뗀다. 원래 이름은 마우스를 올리거나 그날 목록에서 보인다.
    */
+  // 동그라미 i: 마우스를 올리거나(키보드로 가면) 설명이 뜬다. 맨 아래 안내문은 아무도 안 봐서 위쪽에 둠 (10/20 사용자)
+  function infoTip(text, label = "안내") {
+    return el("span", { class: "info-tip" }, [
+      el("button", { type: "button", class: "info-btn", "aria-label": label, text: "i" }),
+      el("span", { class: "tip", role: "tooltip", text }),
+    ]);
+  }
+  const SCHEDULE_NOTE_APPLY = "일정 분류(날짜·시각 확정, 매주, 온라인 등)는 안내문과 회차 시각으로 자동으로 정한 것이라 틀릴 수 있어요. 정확한 일정은 카드의 '상세 일정 확인 ↗'에서 학교 화면을 꼭 확인하세요.";
+  const SCHEDULE_NOTE_MINE = "일정(매주·기간 등)은 자동으로 정리한 것이라 틀릴 수 있어요. 카드를 누르면 학교 상세 화면이 열리니 정확한 일정은 거기서 확인하세요.";
   // 비교과 일정은 자동 분류라 완벽하지 않음 → 학교 상세 화면 바로가기 (10/20 사용자)
   const detailLink = (url) =>
     url ? el("a", { class: "detail-link", href: url, target: "_blank", rel: "noopener", title: "일정 분류는 자동이라 틀릴 수 있어요. 정확한 일정은 학교 상세 화면에서 확인하세요.", text: "상세 일정 확인 ↗" }) : null;
@@ -933,6 +942,7 @@
   function calHead() {
     return el("div", { class: "section-head" }, [
       el("span", { class: "meta", text: loading ? "불러오는 중…" : week?.fetchedAt ? `시간표 ${ago(week.fetchedAt)}` : "" }),
+      infoTip("비교과 일정(매주 회차·기간 등)은 학교 안내문을 자동으로 정리한 것이라 틀릴 수 있어요. 날짜를 누르면 나오는 목록의 '상세 일정 확인 ↗'에서 학교 화면을 확인하세요.", "캘린더 안내"),
       el("button", { class: "small", text: "+ 일정", onclick: () => openEventForm() }),
       el("button", {
         class: "small refresh",
@@ -2008,7 +2018,6 @@
     parts.push(secTitle("시작 대기", g.wait.length), g.wait.length ? rows(g.wait.map(myProgramCard)) : placeholder("시작을 기다리는 비교과가 없어요."));
     parts.push(secTitle("진행 중", g.progress.length), g.progress.length ? rows(g.progress.map(myProgramCard)) : placeholder("진행 중인 비교과가 없어요."));
     if (g.online.length) parts.push(secTitle("온라인", g.online.length, "기간 안에 참여"), rows(g.online.map(onlineRow)));
-    parts.push(el("p", { class: "ap-foot", text: "일정(매주·기간 등)은 자동으로 정리한 것이라 틀릴 수 있어요. 카드를 누르면 학교 상세 화면이 열리니 정확한 일정은 거기서 확인하세요." }));
     return parts;
   }
 
@@ -2017,6 +2026,7 @@
     const fetchedAt = progKind === "mine" ? mine?.fetchedAt : programs?.fetchedAt;
     const head = el("div", { class: "section-head" }, [
       el("span", { class: "meta", text: loadingAny ? "불러오는 중…" : fetchedAt ? `비교과 ${ago(fetchedAt)}` : "" }),
+      infoTip(progKind === "mine" ? SCHEDULE_NOTE_MINE : SCHEDULE_NOTE_APPLY, "일정 분류 안내"),
       el("button", {
         class: "small refresh",
         text: "새로고침",
@@ -2353,7 +2363,6 @@
       if (soon.length) parts.push(secTitle("1주일 안에 신청 마감", soon.length), rows(soon.map(applyCard)));
       if (later.length) parts.push(secTitle("그 뒤 마감", later.length), rows(later.map(applyCard)));
     } else parts.push(secTitle("포인트 높은 순", list.length), rows(list.map(applyCard)));
-    parts.push(el("p", { class: "ap-foot", text: "일정 분류(날짜·시각 확정, 매주, 온라인 등)는 안내문과 회차 시각으로 자동으로 정한 것이라 틀릴 수 있어요. 정확한 일정은 카드의 '상세 일정 확인'에서 학교 화면을 꼭 확인하세요." }));
     return parts;
   }
 
