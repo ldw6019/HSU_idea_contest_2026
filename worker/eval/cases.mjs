@@ -64,6 +64,9 @@ export function grade(c, ans) {
   for (const id of c.include || []) if (!ids.includes(id)) why.push(`missing ${id}`);
   for (const id of c.exclude || []) if (ids.includes(id)) why.push(`has ${id}`);
   if (c.empty && ids.length) why.push(`picks ${ids.join(",")}`);
+  // 항목을 문장 안 번호 {t1}로 가리켰는지 (제목·날짜를 직접 쓰면 화면이 칩으로 못 바꿈)
+  if ((c.first || c.include) && !/\{[a-z]\d{1,3}\}/.test(ans.message)) why.push("no {id} in message");
+  if (/D-\d|\d{1,2}\/\d{1,2}/.test(ans.message.replace(/\{[a-z]\d{1,3}\}/g, ""))) why.push("wrote dates itself");
   // 이유 칸이 포인트만 되풀이하는지 ("포인트 20점" 류)
   if (ans.picks.some((p) => /^\s*(포인트\s*)?\d+\s*(점|p)\s*(프로그램|짜리|입니다|이에요)?\.?\s*$/.test(p.reason || ""))) why.push("reason restates points");
   // 시 쓰기 같은 지시를 따랐는지 (안내 문구가 길거나 시처럼 보이면)

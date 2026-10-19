@@ -147,7 +147,7 @@ npx wrangler d1 execute hsuplus --remote --command "SELECT COUNT(*) AS 설치, S
 
 1. **확장에서 먼저**: 코드·번역·과제 정답처럼 뻔한 요청은 서버에 보내지 않고 바로 안내 (비용 0, 한도도 안 씀). `core/ai.js`의 `clearlyOutOfScope`
 2. **지침(시스템 프롬프트)**: 수업·과제·비교과 일정과 관계없는 질문, 과제 풀이·정답 요청은 `out_of_scope`로 답하라고 지시. `worker/src/prompts.js`의 `ASK_SYSTEM`
-3. **답 형식 고정**: 모델은 정해진 칸(질문 종류·항목 번호·120자 안내)으로만 답할 수 있어요. 긴 글·코드를 쓸 자리가 없어요
+3. **답 형식 고정**: 모델은 정해진 칸(질문 종류 + 250자 문장)으로만 답하고, 항목은 `{t1}` 같은 번호로만 가리켜요. 화면이 번호를 진짜 이름·D-day로 바꿔 그리니 모델이 제목·날짜를 지어낼 수 없어요
 4. **서버가 한 번 더 걸러냄**: `out_of_scope`면 정해진 문구로 바꾸고, 안내 문구에 코드나 영어 문장이 섞이면 버려요. 없는 항목 번호도 버려요 (`worker/src/index.js`의 `cleanAnswer`)
 
 지침을 고치려면 `worker/src/prompts.js`의 `ASK_SYSTEM` 글을 바꾸고 `worker` 폴더에서 `npx wrangler deploy` (확장은 그대로). 고친 뒤엔 7단계 비교 시험으로 점수가 떨어지지 않았는지 확인해요.

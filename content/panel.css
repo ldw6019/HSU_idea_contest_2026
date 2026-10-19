@@ -823,3 +823,19 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 .ai-tag { margin: 4px 2px 0; font-size: 10.5px; color: var(--ot-muted); }
 .ai-mode.on::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 5px; border-radius: 50%; background: var(--ot-primary); vertical-align: 1px; }
 @media (prefers-reduced-motion: reduce) { .bubble.pending { animation: none; } }
+
+/* ---------- AI 답: 문장 안 항목 칩 (10/20 사용자 선택 "문장 안에 이름만") ----------
+   이름에만 밑줄, D-day는 작게 위로 붙여서 뒤에 오는 조사(는/를)와 자연스럽게 이어지게 */
+.bubble.ai-say { line-height: 1.8; }
+.ai-ref { display: inline; padding: 0; border: none; background: none; font: inherit; color: var(--ot-primary-dark); text-decoration: none; cursor: pointer; border-radius: 3px; }
+.ai-ref .nm {
+  font-weight: 700; text-decoration: underline; text-decoration-thickness: 1.5px; text-underline-offset: 3px; text-decoration-color: rgba(11, 77, 162, 0.35);
+}
+.ai-ref:hover .nm, .ai-ref:focus-visible .nm { text-decoration-color: currentColor; background: var(--ot-today-bg); }
+.ai-ref .dd { display: inline-block; margin: 0 1px 0 2px; padding: 0 3px; border-radius: 3px; font-size: 10px; font-weight: 700; line-height: 1.4; vertical-align: 4px; color: var(--ot-sub); background: var(--ot-soft); }
+.ai-ref.hot .dd { color: #b42318; background: #fde8e7; }
+.ai-ref.k-open .nm, .ai-ref.k-mine .nm { color: #0e7f72; text-decoration-color: rgba(14, 127, 114, 0.35); }
+.ai-ref.k-acad .nm { color: #3d4a5e; text-decoration-color: rgba(61, 74, 94, 0.35); }
+.ai-ref.k-event .nm { color: var(--ot-ev); }
+.ai-ref .tail { white-space: nowrap; }
+.ai-ref .josa { color: var(--ot-text); font-weight: 400; }

@@ -28,7 +28,17 @@ mockOut = { intent: "today", picks: [{ id: "t1", reason: "내일 마감" }, { id
 let r = await call("/v1/ask", { question: "오늘 뭐 해야 돼?", context });
 check("정상 질문 200", r.status === 200, JSON.stringify(r.body));
 check("없는 번호 제거", r.body.picks.map((p) => p.id).join() === "t1,s1");
-check("이유 40자 자르기", r.body.picks[1].reason.length === 40);
+check("(예전 모양 picks 배열도 받음)", r.body.message.includes("데이터베이스"));
+
+// 1-2) 새 모양: 문장 안 번호 {t1} → 항목, 없는 번호 {t9}는 문장에서 지움, 줄바꿈·글머리표 정리, 250자
+mockOut = { intent: "today", message: "오늘은 {t1}부터 하세요.\n- {t9}는 무시\n그다음 {s1}, 다시 {t1}." };
+r = await call("/v1/ask", { question: "오늘 뭐 해야 돼?", context }, { install: "bbbbbbbbbbbbbbbb2222" });
+check("문장 번호 → 항목(순서·중복 제거)", r.body.picks.map((p) => p.id).join() === "t1,s1", JSON.stringify(r.body));
+check("없는 번호는 문장에서 지움", !/t9/.test(r.body.message) && !/\n/.test(r.body.message), r.body.message);
+check("번호 {t1}은 코드로 오해 안 함", /\{t1\}/.test(r.body.message));
+mockOut = { intent: "week", message: "{t1} ".repeat(10) + "가".repeat(300) };
+r = await call("/v1/ask", { question: "이번 주?", context }, { install: "bbbbbbbbbbbbbbbb2222" });
+check("문장 250자 자르기", r.body.message.length <= 251, String(r.body.message.length));
 
 // 2) 범위 밖: 모델이 out_of_scope로 판정 → 정해진 문구, 항목 없음 (모델이 코드를 message에 넣어도 버림)
 mockOut = { intent: "out_of_scope", picks: [{ id: "t1" }], message: "def bubble_sort(a): ..." };

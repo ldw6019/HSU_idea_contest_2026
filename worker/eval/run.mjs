@@ -22,7 +22,7 @@ if (!presets.length) {
 const MOCK = async ({ user }) => {
   const q = user.slice(user.lastIndexOf("질문:"));
   if (/답 알려|코드|날씨|번역/.test(q)) return { intent: "out_of_scope", picks: [], message: "" };
-  return { intent: "today", picks: [{ id: "t1", reason: "오늘 마감" }], message: "오늘 마감인 과제부터 하세요." };
+  return { intent: "today", message: "오늘은 {t1}부터 끝내세요." };
 };
 
 // 키 묻기: 입력한 글자를 화면에 보이지 않게

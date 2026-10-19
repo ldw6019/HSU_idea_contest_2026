@@ -2587,8 +2587,10 @@
       aiBusy = false;
       chat.pop(); // "생각하는 중…"
       if (r?.ok) {
-        const picks = (r.picks || []).map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref);
-        chat.push({ who: "bot", text: r.message || (picks.length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), picks, ai: true });
+        // 10/20 "문장 안에 이름" 모양: 문장 속 {t1}을 진짜 이름·D-day 칩으로 바꿔 그림 (카드 목록은 안 띄움)
+        const refs = {};
+        for (const p of r.picks || []) if (built.refs.get(p.id)) refs[p.id] = built.refs.get(p.id);
+        chat.push({ who: "bot", text: r.message || (Object.keys(refs).length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), refs, ai: true });
         while (chat.length > 30) chat.shift();
         return renderAI({ scroll: true });
       }
@@ -2603,7 +2605,54 @@
     renderAI({ scroll: true });
   }
 
-  // 답 카드 한 줄: 실제 항목으로 그린다
+  // AI 문장 그리기: "{t1}부터 하세요" → [진짜 이름 D-6]부터 하세요. 문장에 번호가 없으면 끝에 칩으로 붙임
+  function aiSentence(m) {
+    const parts = [];
+    const used = new Set();
+    let last = 0;
+    for (const x of m.text.matchAll(/\{([a-z]\d{1,3})\}/g)) {
+      parts.push(m.text.slice(last, x.index));
+      last = x.index + x[0].length;
+      const ref = m.refs?.[x[1]];
+      if (!ref) continue;
+      // 바로 뒤 조사(는·를·부터…)를 D-day와 한 덩어리로 묶어 줄바꿈 때 조사만 다음 줄로 떨어지지 않게
+      const josa = /^(으로|부터|까지|에서|에게|처럼|보다|이랑|은|는|이|가|을|를|와|과|도|만|의|에|로|랑)(?=[\s,.!?)]|$)/.exec(m.text.slice(last))?.[0] || "";
+      last += josa.length;
+      parts.push(refChip(ref, josa));
+      used.add(x[1]);
+    }
+    parts.push(m.text.slice(last));
+    const rest = Object.keys(m.refs || {}).filter((id) => !used.has(id));
+    if (rest.length) parts.push(" ", ...rest.flatMap((id, i) => [i ? " " : "", refChip(m.refs[id])]));
+    return parts.filter((x) => x !== "").map((x) => (typeof x === "string" ? document.createTextNode(x) : x));
+  }
+  function refBadge(r) {
+    const it = r.item;
+    const dd = (iso, pre = "") => {
+      const n = daysLeft(iso);
+      return n <= 0 ? `${pre}오늘` : `${pre}D-${n}`;
+    };
+    if (r.kind === "task") return it.due ? dd(it.due) : "";
+    if (r.kind === "open") return it.due ? dd(it.due, "신청 ") : "";
+    if (r.kind === "survey") return "설문";
+    if (r.kind === "event") return md(new Date(it.start));
+    if (r.kind === "acad") return it.start <= ymd(new Date()) ? `~${md(fromYmd(it.end))}` : `${md(fromYmd(it.start))}~`;
+    if (r.kind === "mine" && r.session?.kind === "exact") return md(new Date(r.session.start));
+    return "";
+  }
+  function refChip(r, josa = "") {
+    const it = r.item;
+    const full = it.title || "";
+    const name = shortTitle(full);
+    const badge = refBadge(r);
+    const kids = [el("span", { class: "nm", text: name.length > 24 ? `${name.slice(0, 23)}…` : name }), badge || josa ? el("span", { class: "tail" }, [badge ? el("span", { class: "dd", text: badge }) : null, josa ? el("span", { class: "josa", text: josa }) : null]) : null];
+    const cls = `ai-ref k-${r.kind}${r.kind === "task" && it.due && daysLeft(it.due) <= 1 ? " hot" : ""}`;
+    if (r.kind === "event") return el("button", { type: "button", class: cls, title: full, onclick: () => editEvent(it.id) }, kids);
+    const href = r.kind === "task" ? openUrl(it) : r.kind === "survey" ? it.listUrl : r.kind === "acad" ? ACADEMIC_URL : it.url;
+    return el("a", { class: cls, href, target: "_blank", rel: "noopener", title: full }, kids);
+  }
+
+  // 답 카드 한 줄: 실제 항목으로 그린다 (추천 버튼의 기본 답변)
   function pickRow(p) {
     const r = p.ref;
     const it = r.item;
@@ -2654,11 +2703,11 @@
     const log = el("div", { class: "chat" });
     log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." })]));
     for (const m of chat) {
-      const bubble = el("div", { class: `bubble${m.pending ? " pending" : ""}`, text: m.text });
+      const bubble = m.ai ? el("div", { class: "bubble ai-say" }, aiSentence(m)) : el("div", { class: `bubble${m.pending ? " pending" : ""}`, text: m.text });
       const parts = [bubble];
       if (m.picks?.length) parts.push(el("div", { class: "ai-picks" }, m.picks.map(pickRow)));
       if (m.note) parts.push(el("div", { class: "ai-note", text: m.note }));
-      if (m.ai) parts.push(el("div", { class: "ai-tag", text: "AI 답변 · 날짜·마감은 학교 정보 그대로" }));
+      if (m.ai) parts.push(el("div", { class: "ai-tag", text: "AI 답변 · 밑줄 이름을 누르면 그 화면으로 · 이름·D-day는 학교 정보 그대로" }));
       log.appendChild(el("div", { class: `msg ${m.who}` }, parts));
     }
 
