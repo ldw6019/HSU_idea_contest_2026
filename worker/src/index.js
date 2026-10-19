@@ -97,6 +97,15 @@ export const looksOffTopic = (m) => {
   return CODE_LIKE.test(s) || /[A-Za-z]{4,}(\s+[A-Za-z]{2,}){4,}/.test(s);
 };
 
+// 문장 속 날짜(10/22, 10월 22일)가 학생 정보에 실제로 있는 날짜인지 (10/19: 날짜를 아예 못 쓰게 하니 모델이 자꾸 어김
+//  → 쓰는 건 허용하고, 정보에 없는 날짜를 지어내면 문장을 버림)
+const DATE_RE = /(\d{1,2})\s*(?:\/|월\s*)(\d{1,2})(?!\d)/g;
+const datesIn = (text) => new Set([...String(text).matchAll(DATE_RE)].map((m) => `${Number(m[1])}/${Number(m[2])}`).filter((d) => { const [mo, da] = d.split("/").map(Number); return mo >= 1 && mo <= 12 && da >= 1 && da <= 31; }));
+export function inventedDates(message, context) {
+  const known = datesIn(JSON.stringify(context));
+  return [...datesIn(message.replace(REF, ""))].filter((d) => !known.has(d));
+}
+
 /**
  * 모델 답 정리 (10/20 "문장 안에 이름" 모양)
  *  message: 250자, 없는 번호 {t9}는 지움, 줄바꿈·글머리표 정리. picks = 문장에 나온 번호 순서(최대 8)
@@ -119,6 +128,8 @@ export function cleanAnswer(out, context) {
   picks = picks.slice(0, 8).map((id) => ({ id }));
   // 모델이 일정 질문으로 판단하고도 문장에 코드·번역문 같은 걸 끼워 넣으면 버리고 정해진 문구로 (10/20)
   if (looksOffTopic(message)) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요.";
+  // 학생 정보에 없는 날짜를 지어내면 문장을 버리고 항목 칩만 (날짜는 칩의 D-day가 정확)
+  else if (inventedDates(message, context).length) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요.";
   return { intent, picks, message };
 }
 

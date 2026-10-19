@@ -1,0 +1,6 @@
+{
+  "name": "hsuplus-ai-worker",
+  "private": true,
+  "type": "module",
+  "description": "HSU PLUS AI 서버 (Cloudflare Worker). 이 파일은 node로 시험·비교 시험을 돌릴 때 ESM으로 읽게 하려는 것"
+}

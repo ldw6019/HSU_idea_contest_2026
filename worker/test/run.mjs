@@ -61,6 +61,14 @@ mockOut = { intent: "today", picks: [{ id: "t1" }], message: "데이터베이스
 r = await call("/v1/ask", { question: "오늘 뭐 해?", context }, { install: "aaaaaaaaaaaaaaaa1111" });
 check("평범한 한국어 문구는 그대로", /데이터베이스/.test(r.body.message), r.body.message);
 
+// 3-3) 날짜: 정보에 있는 날짜(10/15)는 그대로, 없는 날짜(10/31)를 지어내면 문장 버림
+mockOut = { intent: "today", message: "{t1}은 10/15까지예요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "cccccccccccccccc3333" });
+check("정보에 있는 날짜는 그대로", /10\/15/.test(r.body.message), r.body.message);
+mockOut = { intent: "today", message: "{t1}은 10월 31일까지예요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "cccccccccccccccc3333" });
+check("지어낸 날짜 → 문장 버림", !/31/.test(r.body.message) && r.body.picks[0]?.id === "t1", r.body.message);
+
 // 4) 1인 하루 한도(시험값 3회) 넘으면 429 + 기본 답변 모드
 r = await call("/v1/ask", { question: "또", context });
 check("4번째 질문 429", r.status === 429 && r.body.mode === "template", JSON.stringify(r.body));
