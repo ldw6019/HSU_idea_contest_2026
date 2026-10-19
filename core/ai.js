@@ -38,7 +38,7 @@ export function detectIntent(q) {
   if (/(학사|수강\s*신청|휴학|복학|전과|재입학|신청\s*기간|중간고사|기말고사|시험\s*기간|개강|종강)/.test(s)) return "academic";
   if (/(비는|빈\s*시간|공강|여유|틈|신청할\s*만|추천)/.test(s)) return "free";
   if (/(이번\s*주|요약|일정|스케줄|주간)/.test(s)) return "week";
-  if (/(오늘|뭐\s*해|뭘\s*해|할\s*일|급한|먼저|마감)/.test(s)) return "today";
+  if (/(오늘|뭐\s*해|뭘\s*해|뭐\s*하지|할\s*일|할\s*거|할\s*것|급한|먼저|마감)/.test(s)) return "today";
   return "unknown";
 }
 
@@ -240,7 +240,7 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
     : full;
   c.myEvents ||= [];
   c.academic ||= [];
-  if (intent === "out" || intent === "unknown") return { text: intent === "out" ? OUT_OF_SCOPE : "아직은 정해진 질문만 답할 수 있어요. 아래 버튼으로 물어보세요.", picks: [] };
+  if (intent === "out" || intent === "unknown") return { text: intent === "out" ? OUT_OF_SCOPE : "이 질문은 기본 답변으로는 답하기 어려워요. 아래 버튼으로 물어봐 주세요.", picks: [] };
 
   if (intent === "today") {
     const urgent = c.tasks.filter((t) => t.dday <= 1);
@@ -308,6 +308,22 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
     return { text: `앞으로 2주 안 학사 일정이에요 (학교 홈페이지 학사일정 기준).`, picks: c.academic.map((a) => ({ id: a.id, reason: `${a.kind} · ${a.period}${a.state === "진행 중" ? " 진행 중" : ""}` })) };
   }
   return { text: OUT_OF_SCOPE, picks: [] };
+}
+
+/**
+ * 받침에 맞게 조사 고치기 (10/20: AI가 "…2차 모집는"처럼 틀림 → 칩 이름 끝 글자로 다시 고름)
+ *  은/는, 이/가, 을/를, 과/와, 으로/로(ㄹ받침은 로), 이랑/랑. 끝 글자가 한글이 아니면(영어·숫자·괄호) 그대로
+ */
+export function fixJosa(name, josa) {
+  const last = String(name || "").replace(/[\s…)\]」』]+$/, "").slice(-1);
+  const code = last.charCodeAt(0) - 0xac00;
+  if (!josa || code < 0 || code > 11171) return josa;
+  const jong = code % 28;
+  const has = jong !== 0;
+  const pairs = { 은: "는", 이: "가", 을: "를", 과: "와", 이랑: "랑" };
+  for (const [a, b] of Object.entries(pairs)) if (josa === a || josa === b) return has ? a : b;
+  if (josa === "으로" || josa === "로") return has && jong !== 8 ? "으로" : "로"; // 8 = ㄹ
+  return josa;
 }
 
 /**

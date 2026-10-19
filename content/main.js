@@ -2477,6 +2477,8 @@
     if (current === "ai") renderAI();
   });
   let aiBusy = false;
+  let M_AI = null; // core/ai.js (조사 고치기 등 화면 그릴 때 바로 쓰려고)
+  mods.then((m) => (M_AI = m.ai));
   const AI_FAIL_NOTE = {
     user: "오늘 AI 질문 횟수를 다 써서 기본 답변으로 보여 드려요. 내일 다시 쓸 수 있어요.",
     rate: "질문이 너무 빨라요. 잠깐 뒤에 다시 물어봐 주세요. 우선 기본 답변이에요.",
@@ -2621,7 +2623,7 @@
       // 바로 뒤 조사(는·를·부터…)를 D-day와 한 덩어리로 묶어 줄바꿈 때 조사만 다음 줄로 떨어지지 않게
       const josa = /^(으로|부터|까지|에서|에게|처럼|보다|이랑|은|는|이|가|을|를|와|과|도|만|의|에|로|랑)(?=[\s,.!?)]|$)/.exec(m.text.slice(last))?.[0] || "";
       last += josa.length;
-      parts.push(refChip(ref, josa));
+      parts.push(refChip(ref, M_AI ? M_AI.fixJosa(ref.item?.title || "", josa) : josa));
       used.add(x[1]);
     }
     parts.push(m.text.slice(last));
