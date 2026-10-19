@@ -593,10 +593,47 @@
     ]);
   }
 
+  // ---------- 화면 옵션 (기기 사이 동기화, opt|이름) ----------
+  //  acad: 0이면 학사일정 끔 (10/20 사용자: 안 궁금할 수도 있으니 켜고 끄기). 값이 없으면 켬
+  let opts = {};
+  userMap("opt").then((v) => {
+    opts = v;
+    rerender();
+  });
+  onUserChange("opt", (id, v) => {
+    if (v == null) delete opts[id];
+    else opts[id] = v;
+    if (id === "acad" && acadOn()) loadAcademic();
+  });
+  const acadOn = () => opts.acad !== 0;
+  function setAcad(on) {
+    if (on) delete opts.acad;
+    else opts.acad = 0;
+    userPut("opt", "acad", on ? null : 0);
+    if (on) loadAcademic();
+    rerender();
+  }
+  /** 학사일정 켜고 끄는 스위치 (이번 주 탭 학사 칸, 캘린더 아래, 설정에 같은 것) */
+  function acadSwitch(label = "학사일정") {
+    const on = acadOn();
+    return el("button", {
+      type: "button",
+      class: `sw${on ? " on" : ""}`,
+      role: "switch",
+      "aria-checked": on ? "true" : "false",
+      title: on ? "학교 학사일정(신청 기간·시험)을 이번 주 탭과 캘린더에 보여줘요. 누르면 꺼요." : "학사일정이 꺼져 있어요. 누르면 이번 주 탭과 캘린더에 다시 보여줘요.",
+      onclick: (e) => {
+        e.stopPropagation();
+        setAcad(!acadOn());
+      },
+    }, [el("span", { class: "sw-label", text: label }), el("span", { class: "sw-track" }, [el("span", { class: "sw-knob" })])]);
+  }
+
   // ---------- 학사일정 (학교 홈페이지 공개 화면, #19, 10/20) ----------
   const ACADEMIC_URL = "https://www.hansung.ac.kr/hansung/6096/subview.do";
   let academic = null; // { ok, data: [{id,title,start,end,kind}], fetchedAt, error }
   async function loadAcademic({ force = false } = {}) {
+    if (!acadOn()) return; // 꺼 두면 학교 홈페이지에 요청도 하지 않음
     try {
       const { cache, hansung } = await mods;
       const r = await cache.getOrFetch("academic", cache.TTL.TIMETABLE, () => hansung.fetchAcademicCalendar(getText), { force });
@@ -609,7 +646,7 @@
     rerender();
   }
   /** 화면에 올릴 학사일정: 신청·시험·학기 흐름 (수업일수 N일 같은 건 뺌), 숨긴 것 제외 */
-  const academicList = () => (academic?.ok ? academic.data.filter((a) => a.kind !== "other" && !isHidden(a.id)) : []);
+  const academicList = () => (acadOn() && academic?.ok ? academic.data.filter((a) => a.kind !== "other" && !isHidden(a.id)) : []);
   /** 이번 주 탭 위쪽: 진행 중이거나 14일 안에 시작하는 신청·시험 */
   function academicSoon(now = new Date()) {
     const today = ymd(now);
@@ -624,6 +661,7 @@
       });
   }
   function academicStrip(now = new Date()) {
+    if (!acadOn()) return null;
     const list = academicSoon(now);
     const today = ymd(now);
     const until = ymd(addDays(now, 14));
@@ -651,7 +689,7 @@
       ]);
     };
     return el("div", { class: "ac-box" }, [
-      el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" }), el("a", { href: ACADEMIC_URL, target: "_blank", rel: "noopener", text: "전체 보기" })]),
+      el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" }), el("span", { class: "grow" }), el("a", { href: ACADEMIC_URL, target: "_blank", rel: "noopener", text: "전체 보기" }), acadSwitch("")]),
       ...list.slice(0, 2).map(row), // 아래 할 일 목록을 너무 밀어내지 않게 2개까지 (나와 상관없는 건 ×로 숨김)
       list.length > 2 ? el("div", { class: "ac-more", text: `그 밖에 ${list.length - 2}개는 캘린더에서` }) : null,
       unhide,
@@ -939,6 +977,8 @@
         el("button", { class: "small", text: "캘린더 파일(.ics) 내보내기", title: "내 비교과 회차·마감·직접 넣은 일정 (수업 시간표는 빼요)", onclick: exportIcs }),
         el("button", { class: "small", text: "백업 저장", onclick: exportBackup }),
         el("button", { class: "small", text: "백업 불러오기", onclick: importBackup }),
+        el("span", { class: "grow" }),
+        acadSwitch(),
       ]),
       calNote ? el("p", { class: "ct-note", text: calNote }) : null,
     ]);
@@ -1790,6 +1830,7 @@
 
   function rerender() {
     if (deadContext) return renderDeadNotice();
+    renderSetOpts();
     if (current === "week") renderWeek();
     else if (current === "calendar" && !evDraft) renderCalendar(); // 일정 입력 중이면 다시 그리지 않음
     else if (current === "programs") renderPrograms();
@@ -2474,7 +2515,10 @@
     chat.push({ who: "me", text: q });
     const built = ai.buildContext(aiData());
     const intent = presetId || ai.detectIntent(q);
-    const a = ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
+    const a =
+      intent === "academic" && !acadOn()
+        ? { text: "학사일정 보기를 꺼 두었어요. 캘린더 탭 아래나 '연결 상태 · 설정'의 학사일정 스위치를 켜면 알려 드릴게요.", picks: [] }
+        : ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
     chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: a.note });
     while (chat.length > 30) chat.shift();
     renderAI({ scroll: true });
@@ -2588,6 +2632,8 @@
   // ---------- 연결 상태 · 설정 (10/20: 백업, 내 데이터 지우기, 처음 안내 다시 보기, 버전) ----------
   let wipeArmed = false;
   const settingsNote = el("p", { class: "set-note" });
+  const setOpts = el("div", { class: "set-opts" }); // 켜고 끄는 것들 (rerender 때 다시 그림)
+  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"));
   const wipeBtn = el("button", {
     class: "small danger",
     text: "내 데이터 모두 지우기",
@@ -2607,8 +2653,9 @@
       const local = await chrome.storage.local.get(null);
       await chrome.storage.local.remove(Object.keys(local));
       const sync = await chrome.storage.sync.get(null);
-      await chrome.storage.sync.remove(Object.keys(sync).filter((k) => /^(hide|color|ev)\|/.test(k)));
+      await chrome.storage.sync.remove(Object.keys(sync).filter((k) => /^(hide|color|ev|opt)\|/.test(k)));
       hidden = {};
+      opts = {};
       events = {};
       courseColors = {};
       details = {};
@@ -2628,6 +2675,7 @@
     el("div", { class: "status-actions" }, [el("button", { class: "small", text: "다시 확인", onclick: () => checkStatus() })]),
     statusList,
     el("div", { class: "set-box" }, [
+      setOpts,
       el("div", { class: "set-row" }, [
         el("button", { class: "small", text: "처음 안내 다시 보기", onclick: () => showWelcome(true) }),
         el("button", { class: "small", text: "백업 저장", onclick: () => exportBackup() }),
@@ -2638,6 +2686,8 @@
       el("p", { class: "set-ver", text: `HSU PLUS ${chrome.runtime.getManifest?.().version || ""} · 학생 제작 프로토타입, 학교 공식 서비스가 아니에요 · 학교 사이트는 읽기만 하고 비밀번호는 저장하지 않아요` }),
     ]),
   ]);
+
+  renderSetOpts();
 
   function statusRow(name, ok, detail, loginUrl) {
     return el("li", { class: ok ? "ok" : "ng" }, [
