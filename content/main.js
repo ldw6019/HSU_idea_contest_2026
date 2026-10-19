@@ -2515,9 +2515,44 @@
         const ex = info.open.find((s) => s.kind === "exact");
         // 수업과 안 겹치는 회차(매주 회차 포함)가 있으면 그 시각을 문장으로
         const freeS = info.open.find((s) => !s.clash.length && ["exact", "recurring", "multi_day"].includes(s.kind));
-        openInfo[it.meta?.programId] = { category: info.r.category, exact: ex ? { start: ex.start, end: ex.end } : null, when: freeS ? sessionWhen(freeS) : null, free: info.free };
+        openInfo[it.meta?.programId] = { category: info.r.category, exact: ex ? { start: ex.start, end: ex.end } : null, when: freeS ? sessionWhen(freeS) : null, free: info.free, ...effortOf(it, info, freeS || info.open[0]) };
       }
     return { myNext, myEnds, events, academic: academicList(), pointSum, openInfo };
+  }
+
+  // 비교과를 고를 때 AI가 판단할 재료 (10/20 사용자: "꿀 비교과"를 물어도 포인트만 되풀이해서 버튼과 다를 게 없었음)
+  //  공개 상세 화면의 회차 시각으로 브라우저가 계산: 얼마나 시간이 드는지, 회차 수, 온라인, 남은 자리, 시간당 포인트
+  //  시간이 확실할 때만 hours(시간)를 채운다 (온라인 강의 길이·장기 활동·상담은 모름 → effort 글로만)
+  function effortOf(it, info, s) {
+    const out = { sessions: info.open.length || info.sessions.length, online: !!info.r.online };
+    if (info.r.chooseOne) out.pick = "하나만 신청";
+    else if (info.r.multi) out.pick = "여러 회차 신청 가능";
+    const cap = it.meta?.capacity;
+    if (cap != null && it.meta?.applied != null) out.seatsLeft = Math.max(0, cap - it.meta.applied);
+    const cat = info.r.category;
+    if (!s) return { ...out, effort: "남은 회차 없음" };
+    const h = (a, b) => Math.round(((new Date(b) - new Date(a)) / 3600000) * 10) / 10;
+    if (s.kind === "exact" && s.end) {
+      out.hours = h(s.start, s.end);
+      out.effort = `한 번 ${out.hours}시간`;
+    } else if (s.kind === "recurring" && s.end) {
+      const st = new Date(s.start);
+      const en = new Date(s.end);
+      const once = Math.round(((en.getHours() * 60 + en.getMinutes() - st.getHours() * 60 - st.getMinutes()) / 60) * 10) / 10;
+      const times = info.r.recurring?.times || Math.max(1, Math.round((dayStart(en) - dayStart(st)) / (7 * 864e5)) + 1);
+      out.hours = Math.round(once * times * 10) / 10;
+      out.effort = `매주 ${once}시간 × ${times}회`;
+    } else if (s.kind === "multi_day") {
+      out.effort = `${Math.round((dayStart(new Date(s.end)) - dayStart(new Date(s.start))) / 864e5) + 1}일 연속 행사`;
+    } else if (s.kind === "date_only") out.effort = "날짜만 정해짐(시각 미정)";
+    else if (cat === "online") out.effort = "기간 안에 온라인으로 수강(길이 모름)";
+    else if (cat === "submission") out.effort = "마감까지 결과물 제출";
+    else if (cat === "consult") out.effort = "신청 뒤 개별로 일정 잡는 상담";
+    else if (cat === "long_term") out.effort = "기간 내내 하는 장기 활동";
+    else out.effort = "세부 일정 따로 안내";
+    const pt = it.meta?.point;
+    if (out.hours >= 0.5 && pt) out.ptsPerHour = Math.round((pt / out.hours) * 10) / 10;
+    return out;
   }
 
   async function ask(question, presetId) {

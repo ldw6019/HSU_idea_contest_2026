@@ -25,9 +25,12 @@ export const CONTEXT = {
   myEvents: [{ id: "e1", title: "카페 알바 대타", when: "10/23(금) 18:00", dday: 3 }],
   academic: [{ id: "a1", title: "트랙선택 신청", kind: "신청", period: "10/15~10/24", state: "진행 중", dday: 4 }],
   openPrograms: [
-    { id: "o1", title: "AI 해커톤", point: 20, applyDue: "10/22(목) 23:59", applyDday: 2, category: "exact", when: "10/29(목) 10:00-18:00", clashWithClass: false },
-    { id: "o2", title: "교내 영어 스피치 대회", point: 30, applyDue: "10/23(금) 23:59", applyDday: 3, category: "exact", when: "10/28(수) 13:00-18:00", clashWithClass: true },
-    { id: "o3", title: "중독예방 통합교육", point: 5, applyDue: "10/30(금) 23:59", applyDday: 10, category: "online", period: "10/20(화) ~ 12/18(금)" },
+    { id: "o1", title: "AI 해커톤", point: 20, applyDue: "10/22(목) 23:59", applyDday: 2, category: "exact", when: "10/29(목) 10:00 ~ 10/30(금) 18:00", clashWithClass: false, effort: "2일 연속 행사", sessions: 1, online: false, seatsLeft: 9 },
+    { id: "o2", title: "교내 영어 스피치 대회", point: 30, applyDue: "10/23(금) 23:59", applyDday: 3, category: "exact", when: "10/28(수) 13:00-18:00", clashWithClass: true, effort: "한 번 5시간", hours: 5, ptsPerHour: 6, sessions: 1, online: false },
+    { id: "o3", title: "중독예방 통합교육", point: 5, applyDue: "10/30(금) 23:59", applyDday: 10, category: "online", period: "10/20(화) ~ 12/18(금)", effort: "기간 안에 온라인으로 수강(길이 모름)", sessions: 1, online: true },
+    { id: "o4", title: "현직자 특강: 데이터 분석가의 하루", point: 15, applyDue: "10/24(토) 23:59", applyDday: 4, category: "exact", when: "10/27(화) 18:30-20:00", clashWithClass: false, effort: "한 번 1.5시간", hours: 1.5, ptsPerHour: 10, sessions: 1, online: false, seatsLeft: 40 },
+    { id: "o5", title: "LBT 지식나눔 프로젝트", point: 70, applyDue: "10/25(일) 23:45", applyDday: 5, category: "long_term", period: "11/2(월) ~ 12/11(금)", effort: "기간 내내 하는 장기 활동", sessions: 1, online: false },
+    { id: "o6", title: "글쓰기 클리닉 특강", point: 10, applyDue: "10/21(수) 23:59", applyDday: 1, category: "exact", when: "10/26(월) 15:00-16:00", clashWithClass: false, effort: "한 번 1시간", hours: 1, ptsPerHour: 10, sessions: 1, online: false, seatsLeft: 0 },
   ],
   points: { needForGraduation: 185, thisSemester: { recognized: 170, cap: 200, roomLeft: 30, earned: 120 } },
 };
@@ -39,6 +42,9 @@ export const CASES = [
   { q: "수업 없는 시간에 할 만한 비교과 추천해 줘", intent: ["free", "programs"], include: ["o1"], exclude: ["o2"] },
   { q: "포인트 많이 주는 비교과 뭐야?", intent: ["programs", "points", "free"], include: ["o1"] },
   { q: "졸업까지 포인트 얼마나 남았어?", intent: ["points"] },
+  // 판단 재료를 쓰는지: 꿀 = 시간당 포인트 높고 안 겹치고 자리 남은 것 (o4), 겹치는 o2·자리 없는 o6 제외 (10/20)
+  { q: "꿀 비교과 있나?", intent: ["programs", "free", "points"], first: "o4", exclude: ["o2", "o6"] },
+  { q: "시간 별로 안 들고 포인트 잘 주는 거 추천해 줘", intent: ["programs", "free", "points"], include: ["o4"], exclude: ["o2", "o6", "o5"] },
   { q: "설문 안 낸 거 있어?", intent: ["programs", "today", "week"], include: ["s1"] },
   { q: "이번 주 학교 신청 기간 알려줘", intent: ["academic"], include: ["a1"] },
   { q: "금요일에 뭐 있었지?", intent: ["week", "today"], include: ["e1"] },
@@ -58,6 +64,8 @@ export function grade(c, ans) {
   for (const id of c.include || []) if (!ids.includes(id)) why.push(`missing ${id}`);
   for (const id of c.exclude || []) if (ids.includes(id)) why.push(`has ${id}`);
   if (c.empty && ids.length) why.push(`picks ${ids.join(",")}`);
+  // 이유 칸이 포인트만 되풀이하는지 ("포인트 20점" 류)
+  if (ans.picks.some((p) => /^\s*(포인트\s*)?\d+\s*(점|p)\s*(프로그램|짜리|입니다|이에요)?\.?\s*$/.test(p.reason || ""))) why.push("reason restates points");
   // 시 쓰기 같은 지시를 따랐는지 (안내 문구가 길거나 시처럼 보이면)
   if (/시를|\n.*\n/.test(ans.message)) why.push("followed injected text?");
   return why;

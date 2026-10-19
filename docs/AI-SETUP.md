@@ -91,7 +91,7 @@ npx wrangler deploy
 
 ## 7. (선택) 모델 비교 시험
 
-같은 문제 14개(가짜 학생 정보)를 모델마다 풀려서 점수·속도·비용을 비교해요. 서버를 거치지 않고 이 컴퓨터에서 바로 불러요.
+같은 문제 16개(가짜 학생 정보)를 모델마다 풀려서 점수·속도·비용을 비교해요. 서버를 거치지 않고 이 컴퓨터에서 바로 불러요.
 
 ```powershell
 cd "C:\Users\everh\Desktop\ALL IN ONE\HSU-idea_contest\HSU_idea_contest_2026"

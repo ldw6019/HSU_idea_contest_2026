@@ -190,6 +190,8 @@ export function buildContext(
       const exact = !!ex;
       const entry = { id, title: cut(it.title), point: it.meta?.point ?? null, applyDue: label(it.due), applyDday: daysLeft(it.due, now) };
       if (info?.category) entry.category = info.category;
+      // 판단 재료 (화면이 계산, 공개 정보): 걸리는 시간·회차 수·온라인·남은 자리·시간당 포인트 (10/20)
+      for (const k of ["effort", "hours", "ptsPerHour", "sessions", "pick", "online", "seatsLeft"]) if (info?.[k] != null) entry[k] = info[k];
       if (info?.when) {
         entry.when = info.when; // 수업과 안 겹치는 회차 (매주 회차면 "매주 수 10:00–13:00 (11/4~11/25)")
         entry.clashWithClass = false;
