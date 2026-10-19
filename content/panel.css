@@ -783,3 +783,22 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 
 /* ---------- 비교과 카드 포인트 (신청·내 비교과 같은 모양, 조금 크게) 10/20 ---------- */
 .tcard .badge.program { display: inline-block; align-self: flex-start; margin-top: 1px; font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 8px; letter-spacing: -0.01em; }
+
+/* ---------- 월간: 며칠 이어지는 일정 = 칸을 가로지르는 막대 (3주 이하) 10/20 ----------
+   한 주 = 한 줄 그리드. 날짜 칸은 위아래 전체, 그 위에 막대 줄(2줄까지)과 그날 일정이 겹쳐 놓임(누르면 아래 날짜 칸이 눌림) */
+.mon-week { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); column-gap: 3px; row-gap: 2px; }
+.mon-week > .mon-cell { grid-row: 1 / -1; }
+.mon-items { z-index: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 0 3px 3px; pointer-events: none; }
+.mon-items.out { opacity: 0.55; }
+.mon-items.past:not(.out) .mon-pill { opacity: 0.6; }
+.mon-bar {
+  z-index: 1; align-self: center; min-width: 0; height: 16px; margin: 0 3px; padding: 0 5px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; line-height: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; pointer-events: none;
+}
+.mon-bar.cont-l { margin-left: 0; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.mon-bar.cont-r { margin-right: 0; border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.mon-bar.k-acad { background: #e3e8ef; color: #34405a; }
+.mon-bar.k-prog { background: #dce8ff; color: var(--ot-primary-dark); }
+.mon-bar.k-ev { background: var(--ot-ev-bg); color: var(--ot-ev); }
+.mon-bar.past { opacity: 0.6; }
+.panel.wide .mon-bar { font-size: 11px; }

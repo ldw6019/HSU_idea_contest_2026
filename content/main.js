@@ -659,8 +659,15 @@
   }
 
   // 며칠씩 이어지는 학사일정(신청 기간 등)은 매일 칸을 채우면 정신없어서 첫날·끝날에만 표시 (그날 목록에는 매일 나옴)
-  const pillOn = (x, d) => x.kind !== "acad" || sameDay(x.start, x.end) || sameDay(d, x.start) || sameDay(d, x.end);
-  const pillName = (x, d) => (x.kind === "acad" && !sameDay(x.start, x.end) && sameDay(d, x.end) ? `${shortTitle(x.title)} 끝` : shortTitle(x.title));
+  // 월간: 며칠 이어지는 종일 일정 중 3주(21일) 이하는 막대, 그보다 긴 것은 시작·끝 날에만 (10/20 사용자)
+  const BAR_MAX_DAYS = 21;
+  const BAR_LANES = 2; // 한 주에 막대 줄은 2줄까지, 넘치면 그 날짜 칸에 +N
+  const spanDays = (x) => Math.round((dayStart(x.end) - dayStart(x.start)) / 864e5) + 1;
+  const isBar = (x) => x.allDay && x.kind !== "due" && !x.rough && spanDays(x) > 1 && spanDays(x) <= BAR_MAX_DAYS;
+  const isLong = (x) => x.allDay && spanDays(x) > BAR_MAX_DAYS;
+  // 주간 종일 줄은 학사일정만 시작·끝 날에(예전대로), 월간은 긴 일정만 시작·끝 날에
+  const pillOn = (x, d) => (x.kind !== "acad" && !isLong(x)) || sameDay(x.start, x.end) || sameDay(d, x.start) || sameDay(d, x.end);
+  const pillName = (x, d) => (!sameDay(x.start, x.end) && (x.kind === "acad" || isLong(x)) && sameDay(d, x.end) ? `${shortTitle(x.title)} 끝` : shortTitle(x.title));
 
   // ---- 화면 상태 ----
   let calMode = "week"; // week | month
@@ -1209,32 +1216,68 @@
 
     const grid = el("div", { class: "mon" });
     for (const w of ["월", "화", "수", "목", "금", "토", "일"]) grid.appendChild(el("div", { class: "mon-wd", text: w }));
-    for (let d = new Date(gridStart); d < gridEnd; d = addDays(d, 1)) {
-      const dd = new Date(d);
-      const list = [...allDayOf(dd, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, dd))];
-      const dues = list.filter((x) => x.kind === "due");
-      const others = list.filter((x) => x.kind !== "due" && pillOn(x, dd)).sort((a, b) => a.start - b.start);
-      // 칸이 좁아서 이름은 짧게(학기·연도 머리말 뗌), 시각은 넓게 보기에서만. 원래 이름·시각은 마우스 올리기와 그날 목록에서
-      const pills = others.slice(0, dues.length ? 2 : 3).map((x) =>
-        el("span", { class: `mon-pill k-${x.kind}` }, [x.allDay ? null : el("span", { class: "tm", text: hm(x.start) }), el("span", { class: "nm", text: pillName(x, dd) })])
-      );
-      if (dues.length) pills.push(el("span", { class: `mon-pill due r${riskTier(dues.map((x) => x.due).sort()[0])}` }, [el("span", { class: "nm", text: `마감 ${dues.length}` })]));
-      const more = others.length - (dues.length ? 2 : 3);
-      if (more > 0) pills.push(el("span", { class: "ad-more", text: `+${more}` }));
-      grid.appendChild(
-        el(
-          "button",
-          {
-            class: ["mon-cell", dd.getMonth() !== m - 1 ? "out" : "", sameDay(dd, now) ? "today" : "", dayStart(dd) < dayStart(now) ? "past" : "", calDay === ymd(dd) ? "picked" : "", dd.getDay() === 0 || dd.getDay() === 6 ? "wkend" : ""].filter(Boolean).join(" "),
+    // 며칠 이어지는 일정(3주 이하)은 칸을 가로지르는 막대 하나로 (10/20 사용자). 주가 바뀌면 다음 줄에서 이어짐.
+    //  3주 넘는 긴 일정(방학 등)은 막대 대신 시작·끝 날에만 "이름" / "이름 끝" (pillOn)
+    const barItems = items.filter((x) => isBar(x)).sort((a, b) => a.start - b.start || b.end - a.end);
+    for (let ws = new Date(gridStart); ws < gridEnd; ws = addDays(ws, 7)) {
+      const we = addDays(ws, 6);
+      // 이 주에 걸친 막대 → 줄(lane) 나누기: 겹치지 않으면 같은 줄
+      const lanes = [];
+      const hidden = []; // 줄이 모자라 못 그린 막대 (그 날짜 칸의 +N에 셈)
+      for (const x of barItems) {
+        if (!(x.start <= we && dayStart(x.end) >= ws)) continue;
+        const a = Math.max(0, Math.round((dayStart(x.start) - ws) / 864e5));
+        const b = Math.min(6, Math.round((dayStart(x.end) - ws) / 864e5));
+        const seg = { x, a, b, contL: dayStart(x.start) < ws, contR: dayStart(x.end) > we };
+        const lane = lanes.findIndex((L) => L.every((o) => o.b < a || o.a > b));
+        if (lane >= 0) lanes[lane].push(seg);
+        else if (lanes.length < BAR_LANES) lanes.push([seg]);
+        else hidden.push(seg);
+      }
+      const nL = lanes.length;
+      const week = el("div", { class: "mon-week", style: `grid-template-rows: 20px${nL ? ` repeat(${nL}, 17px)` : ""} minmax(0, 1fr)` });
+      for (let i = 0; i < 7; i++) {
+        const dd = addDays(ws, i);
+        const list = [...allDayOf(dd, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, dd))];
+        const dues = list.filter((x) => x.kind === "due");
+        const others = list.filter((x) => x.kind !== "due" && !isBar(x) && pillOn(x, dd)).sort((a, b) => a.start - b.start);
+        const cap = Math.max(1, (dues.length ? 2 : 3) - nL);
+        const out = dd.getMonth() !== m - 1;
+        const past = dayStart(dd) < dayStart(now);
+        // 칸이 좁아서 이름은 짧게(학기·연도 머리말 뗌), 시각은 넓게 보기에서만. 원래 이름·시각은 마우스 올리기와 그날 목록에서
+        const pills = others.slice(0, cap).map((x) =>
+          el("span", { class: `mon-pill k-${x.kind}` }, [x.allDay ? null : el("span", { class: "tm", text: hm(x.start) }), el("span", { class: "nm", text: pillName(x, dd) })])
+        );
+        if (dues.length) pills.push(el("span", { class: `mon-pill due r${riskTier(dues.map((x) => x.due).sort()[0])}` }, [el("span", { class: "nm", text: `마감 ${dues.length}` })]));
+        const more = others.length - cap + hidden.filter((g) => g.a <= i && i <= g.b).length;
+        if (more > 0) pills.push(el("span", { class: "ad-more", text: `+${more}` }));
+        week.appendChild(
+          el("button", {
+            class: ["mon-cell", out ? "out" : "", sameDay(dd, now) ? "today" : "", past ? "past" : "", calDay === ymd(dd) ? "picked" : "", dd.getDay() === 0 || dd.getDay() === 6 ? "wkend" : ""].filter(Boolean).join(" "),
+            style: `grid-column: ${i + 1}`,
             title: list.length ? list.map((x) => `${x.kind === "due" ? "[마감] " : x.allDay ? "" : hm(x.start) + " "}${x.title}`).join("\n") : null,
             onclick: () => {
               calDay = calDay === ymd(dd) ? null : ymd(dd);
               renderCalendar();
             },
-          },
-          [el("span", { class: "mon-num", text: String(dd.getDate()) }), ...pills]
-        )
-      );
+          }, [el("span", { class: "mon-num", text: String(dd.getDate()) })])
+        );
+        if (pills.length) week.appendChild(el("div", { class: ["mon-items", out ? "out" : "", past ? "past" : ""].filter(Boolean).join(" "), style: `grid-column: ${i + 1}; grid-row: ${nL + 2}` }, pills));
+      }
+      lanes.forEach((L, li) => {
+        for (const g of L) {
+          const ended = dayStart(g.x.end) < dayStart(now);
+          week.appendChild(
+            el("span", {
+              class: ["mon-bar", `k-${g.x.kind}`, g.contL ? "cont-l" : "", g.contR ? "cont-r" : "", ended ? "past" : ""].filter(Boolean).join(" "),
+              style: `grid-column: ${g.a + 1} / ${g.b + 2}; grid-row: ${li + 2}`,
+              title: `${g.x.title}\n${dayLabel(g.x.start)} ~ ${dayLabel(g.x.end)}`,
+              text: shortTitle(g.x.title),
+            })
+          );
+        }
+      });
+      grid.appendChild(week);
     }
     parts.push(grid);
     parts.push(

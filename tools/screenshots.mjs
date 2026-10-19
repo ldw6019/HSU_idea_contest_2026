@@ -132,7 +132,7 @@ pages["/ko/program/all/view/202"] = detail("hidden", [["중독예방", rel(-20, 
 
 // 학교 학사일정 (가짜): 진행 중 신청 하나, 곧 시작하는 신청 하나
 const kdot = (x) => `${x.getFullYear()}.${p2(x.getMonth() + 1)}.${p2(x.getDate())}(Mon)`;
-const acadHtml = `<html><body><div class="desc">${[[rel(-4), rel(5), "트랙선택 신청"], [rel(6), rel(10), "일반 전과신청"], [rel(12), rel(17), "기말고사, 보강 주"]].map(([a, b, t]) => `<dl><dt><span>${kdot(a)} ~ ${kdot(b)}</span></dt><dd><a>${t}</a></dd></dl>`).join("")}</div></body></html>`;
+const acadHtml = `<html><body><div class="desc">${[[rel(-4), rel(5), "트랙선택 신청"], [rel(-12), rel(20), "졸업예정자 비교과 포인트 신청"], [rel(6), rel(10), "일반 전과신청"], [rel(12), rel(17), "기말고사, 보강 주"]].map(([a, b, t]) => `<dl><dt><span>${kdot(a)} ~ ${kdot(b)}</span></dt><dd><a>${t}</a></dd></dl>`).join("")}</div></body></html>`;
 const toB64 = (s) => Buffer.from(s, "utf8").toString("base64");
 const sw = ctx.serviceWorkers()[0] || (await ctx.waitForEvent("serviceworker"));
 await sw.evaluate(
