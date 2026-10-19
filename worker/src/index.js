@@ -89,6 +89,9 @@ function validAskBody(b) {
 }
 
 /** 모델 답 정리: 주어진 번호만, 이유 40자, 안내 120자. 범위 밖이면 정해진 문구 */
+const CODE_LIKE = /```|\bdef\s+\w+\s*\(|\bfunction\b|=>|#include|\bimport\s|\bconsole\.|\bprint\s*\(|\breturn\b|;\s*\S|\{\s*\S[^}]*\}|<\/?[a-z]+>|\bSELECT\b|\bfor\s*\(|\bwhile\s*\(/i;
+export const looksOffTopic = (m) => CODE_LIKE.test(m) || /[A-Za-z]{4,}(\s+[A-Za-z]{2,}){4,}/.test(m); // 코드 또는 영어 문장(번역)
+
 export function cleanAnswer(out, context) {
   const ids = new Set(["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
   const intent = ASK_INTENTS.includes(out?.intent) ? out.intent : "out_of_scope";
@@ -98,7 +101,9 @@ export function cleanAnswer(out, context) {
     .filter((p) => p && ids.has(p.id) && !seen.has(p.id) && seen.add(p.id))
     .slice(0, 6)
     .map((p) => ({ id: p.id, reason: typeof p.reason === "string" ? p.reason.slice(0, 40) : undefined }));
-  const message = typeof out.message === "string" ? out.message.slice(0, 120) : "";
+  let message = typeof out.message === "string" ? out.message.slice(0, 120) : "";
+  // 모델이 일정 질문으로 판단하고도 안내 문구에 코드·번역문 같은 걸 끼워 넣으면 버리고 정해진 문구로 (10/20)
+  if (looksOffTopic(message)) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요.";
   return { intent, picks, message };
 }
 

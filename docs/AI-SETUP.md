@@ -124,6 +124,34 @@ node worker/eval/run.mjs haiku-5.5 gemini-3.8-flash
 - 예비 모델: `AI_FALLBACK_PRESET`을 켜면 기본 모델이 실패할 때 한 번 더 시도해요(그 키도 등록돼 있어야 함).
 - 바꾸기 전에 7단계 비교 시험을 먼저 돌려 보는 걸 권해요.
 
+## 사용량 보기
+
+| 어디서 | 무엇을 |
+|---|---|
+| [Anthropic 콘솔](https://console.anthropic.com) → **Usage / Cost** | 실제로 청구된 금액·토큰 (가장 정확) |
+| Cloudflare → Workers & Pages → `hsuplus-ai` → **Metrics** | 서버에 온 요청 수·오류 수 |
+| PowerShell (`worker` 폴더) | 우리 서버가 센 오늘 비용·질문 수 (아래) |
+
+```powershell
+# 날짜별 추정 비용 (n ÷ 1,000,000 = 달러)
+npx wrangler d1 execute hsuplus --remote --command "SELECT k, n FROM counters WHERE k LIKE 'cost:%'"
+# 오늘 질문한 설치 수와 질문 수 (날짜는 세계 표준시 기준, 한국 시간 오전 9시에 바뀜)
+npx wrangler d1 execute hsuplus --remote --command "SELECT COUNT(*) AS 설치, SUM(n) AS 질문 FROM counters WHERE k LIKE 'ask:2026-10-20:%'"
+```
+
+질문 내용은 어디에도 남지 않아요(숫자만 셈). 그래서 "누가 무엇을 물었는지"는 볼 수 없어요.
+
+## 딴짓 질문 막기 (지침 고치기)
+
+"파이썬 코드 짜 줘" 같은 질문은 네 겹으로 막아요.
+
+1. **확장에서 먼저**: 코드·번역·과제 정답처럼 뻔한 요청은 서버에 보내지 않고 바로 안내 (비용 0, 한도도 안 씀). `core/ai.js`의 `clearlyOutOfScope`
+2. **지침(시스템 프롬프트)**: 수업·과제·비교과 일정과 관계없는 질문, 과제 풀이·정답 요청은 `out_of_scope`로 답하라고 지시. `worker/src/prompts.js`의 `ASK_SYSTEM`
+3. **답 형식 고정**: 모델은 정해진 칸(질문 종류·항목 번호·120자 안내)으로만 답할 수 있어요. 긴 글·코드를 쓸 자리가 없어요
+4. **서버가 한 번 더 걸러냄**: `out_of_scope`면 정해진 문구로 바꾸고, 안내 문구에 코드나 영어 문장이 섞이면 버려요. 없는 항목 번호도 버려요 (`worker/src/index.js`의 `cleanAnswer`)
+
+지침을 고치려면 `worker/src/prompts.js`의 `ASK_SYSTEM` 글을 바꾸고 `worker` 폴더에서 `npx wrangler deploy` (확장은 그대로). 고친 뒤엔 7단계 비교 시험으로 점수가 떨어지지 않았는지 확인해요.
+
 ## 돈이 새지 않게 (이미 들어 있는 것)
 
 | 장치 | 값 (`wrangler.toml`) |

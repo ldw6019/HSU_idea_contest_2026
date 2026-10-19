@@ -2531,6 +2531,12 @@
     const intent = presetId || ai.detectIntent(q);
     let failNote = null;
     // 직접 쓴 질문 + AI 서버 있음 → 서버에 묻는다 (보내는 건 "AI에 보낼 내용 보기"와 같은 내용)
+    if (!presetId && AI_ENDPOINT && ai.clearlyOutOfScope(q)) {
+      // 코드·번역·과제 정답 같은 뻔한 범위 밖 질문은 서버에 보내지 않고 바로 안내 (비용 0, 한도도 안 씀)
+      chat.push({ who: "bot", text: ai.OUT_OF_SCOPE, picks: [] });
+      while (chat.length > 30) chat.shift();
+      return renderAI({ scroll: true });
+    }
     if (!presetId && AI_ENDPOINT) {
       if (aiBusy) return chat.pop();
       aiBusy = true;

@@ -215,3 +215,8 @@
 - E2E(로컬 서버 + 가짜 모델 + 실제 크롬 확장): 추천 버튼은 서버 요청 0, 직접 질문은 1회(사전 요청 OPTIONS 포함, 출처 chrome-extension://…), 보낸 내용에 주소·학번 없음, 지어낸 항목 제거, 4번째(시험 한도 3) 기본 답변 + 안내, 서버 끄면 기본 답변 + 안내
 - 시험: worker 22 + 연결부 22 통과
 - 배포 안내서 `docs/AI-SETUP.md` (Cloudflare 가입부터, 키는 본인이 직접 `wrangler secret put`)
+- AI 서버 배포 완료(사용자, Cloudflare `hsuplus-ai.yeee222241.workers.dev`, D1 APAC), `core/config.js`에 주소
+- (사용자) "파이썬 코드 짜 줘" 같은 딴짓 막기 보강:
+  - 확장: 코드·번역·과제 정답처럼 "해 달라는 말"이 분명한 질문은 서버에 보내지 않고 바로 안내(비용 0, 한도 안 씀). "파이썬 강의 언제까지야?", "코딩 비교과 있어?", "이번 주 일정 짜 줘"는 통과 (`clearlyOutOfScope`, test/scope.test.mjs 19/19)
+  - 서버: 일정 질문으로 판단하고도 안내 문구에 코드·영어 문장이 섞이면 정해진 문구로 바꿈 (worker 시험 25)
+  - AI-SETUP에 사용량 보기(콘솔·Cloudflare·D1 카운터 명령)와 지침 고치는 곳 추가

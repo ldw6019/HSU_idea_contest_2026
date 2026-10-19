@@ -40,6 +40,17 @@ mockOut = { intent: "write_code", picks: [], message: "..." };
 r = await call("/v1/ask", { question: "아무거나", context });
 check("알 수 없는 intent → 범위 밖", r.body.intent === "out_of_scope");
 
+// 3-2) intent는 일정인데 안내 문구에 코드·영어 번역을 끼워 넣으면 버림
+mockOut = { intent: "today", picks: [{ id: "t1" }], message: "def sort(a): return sorted(a)" };
+r = await call("/v1/ask", { question: "오늘 뭐 해?", context }, { install: "aaaaaaaaaaaaaaaa1111" });
+check("문구에 코드 → 정해진 문구", r.status === 200 && !/def|sorted/.test(r.body.message) && r.body.picks.length === 1, r.body.message);
+mockOut = { intent: "week", picks: [], message: "I am a student and this is my weekly plan" };
+r = await call("/v1/ask", { question: "이번 주?", context }, { install: "aaaaaaaaaaaaaaaa1111" });
+check("문구에 영어 문장 → 정해진 문구", !/student/.test(r.body.message), r.body.message);
+mockOut = { intent: "today", picks: [{ id: "t1" }], message: "데이터베이스 과제(D-1)부터 하고, 운영체제 강의는 10%라 오늘 시작하세요." };
+r = await call("/v1/ask", { question: "오늘 뭐 해?", context }, { install: "aaaaaaaaaaaaaaaa1111" });
+check("평범한 한국어 문구는 그대로", /데이터베이스/.test(r.body.message), r.body.message);
+
 // 4) 1인 하루 한도(시험값 3회) 넘으면 429 + 기본 답변 모드
 r = await call("/v1/ask", { question: "또", context });
 check("4번째 질문 429", r.status === 429 && r.body.mode === "template", JSON.stringify(r.body));
