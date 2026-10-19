@@ -5,7 +5,7 @@
 //  키를 파일·채팅·명령어 줄에 직접 적지 않기 (명령어 기록에 남음)
 //  키 없이 시험 도구만 확인: node worker/eval/run.mjs mock
 //
-//  비용은 models.js 요금표로 계산한 추정치. 질문 16개 × 모델 1개 = 보통 1센트(약 10~20원) 안쪽.
+//  비용은 models.js 요금표로 계산한 추정치. 질문 20개 × 모델 1개 = 보통 1센트(약 10~20원) 안쪽.
 import { callModel } from "../src/providers.js";
 import { PRESETS } from "../src/models.js";
 import { ASK_SYSTEM, ASK_TOOL } from "../src/prompts.js";
