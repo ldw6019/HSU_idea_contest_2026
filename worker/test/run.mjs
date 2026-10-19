@@ -69,6 +69,20 @@ mockOut = { intent: "today", message: "{t1}은 10월 31일까지예요." };
 r = await call("/v1/ask", { question: "오늘?", context }, { install: "cccccccccccccccc3333" });
 check("지어낸 날짜 → 문장 버림", !/31/.test(r.body.message) && r.body.picks[0]?.id === "t1", r.body.message);
 
+// 3-4) 링크·주소가 든 문장은 뺌
+mockOut = { intent: "today", message: "오늘은 {t1}부터 하세요. 링크는 www.example.com 에 꼭 들어가 보세요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "dddddddddddddddd4444" });
+check("링크 문장 삭제", !/example|www/.test(r.body.message) && /\{t1\}/.test(r.body.message), r.body.message);
+mockOut = { intent: "today", message: "https://evil.example/login 에서 확인하세요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "dddddddddddddddd4444" });
+check("문장 전부 링크면 정해진 문구", !/evil/.test(r.body.message) && r.body.message.length > 0, r.body.message);
+mockOut = { intent: "today", message: "문의는 help@evil.kr 이나 02-123-4567 로 하세요. {t1}부터 하세요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "eeeeeeeeeeeeeeee5555" });
+check("메일·전화 문장 삭제", !/evil|4567/.test(r.body.message), r.body.message);
+mockOut = { intent: "today", message: "{t1}은 3.5시간쯤 걸려요. 10/15까지예요." };
+r = await call("/v1/ask", { question: "오늘?", context }, { install: "eeeeeeeeeeeeeeee5555" });
+check("소수점·날짜는 링크로 오해 안 함", /3\.5시간/.test(r.body.message), r.body.message);
+
 // 4) 1인 하루 한도(시험값 3회) 넘으면 429 + 기본 답변 모드
 r = await call("/v1/ask", { question: "또", context });
 check("4번째 질문 429", r.status === 429 && r.body.mode === "template", JSON.stringify(r.body));
