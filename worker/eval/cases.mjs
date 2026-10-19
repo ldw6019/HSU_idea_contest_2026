@@ -35,7 +35,7 @@ export const CONTEXT = {
     { id: "o3", title: "중독예방 통합교육", point: 5, applyDue: "10/30(금) 23:59", applyDday: 10, category: "online", period: "10/20(화) ~ 12/18(금)", effort: "기간 안에 온라인으로 수강(길이 모름)", sessions: 1, online: true },
     { id: "o4", title: "현직자 특강: 데이터 분석가의 하루", point: 15, applyDue: "10/24(토) 23:59", applyDday: 4, category: "exact", when: "10/27(화) 18:30-20:00", clashWithClass: false, effort: "한 번 1.5시간", hours: 1.5, ptsPerHour: 10, sessions: 1, online: false, seatsLeft: 40 },
     { id: "o5", title: "LBT 지식나눔 프로젝트", point: 70, applyDue: "10/25(일) 23:45", applyDday: 5, category: "long_term", period: "11/2(월) ~ 12/11(금)", effort: "기간 내내 하는 장기 활동", sessions: 1, online: false },
-    { id: "o6", title: "글쓰기 클리닉 특강", point: 10, applyDue: "10/21(수) 23:59", applyDday: 1, category: "exact", when: "10/26(월) 15:00-16:00", clashWithClass: false, effort: "한 번 1시간", hours: 1, ptsPerHour: 10, sessions: 1, online: false, seatsLeft: 0 },
+    // 자리 없는 비교과(seatsLeft 0)는 확장이 아예 보내지 않음 (10/19) → 여기에도 넣지 않음
   ],
   points: { needForGraduation: 185, thisSemester: { recognized: 170, cap: 200, roomLeft: 30, earned: 120 } },
 };
@@ -44,12 +44,12 @@ export const CASES = [
   { q: "오늘 뭐 해야 돼?", intent: ["today"], first: "t1" },
   { q: "이번 주에 마감인 거 뭐 있어?", intent: ["week", "today"], include: ["t1", "t2"], exclude: ["t4", "t5"] },
   { q: "내일모레까지 들어야 하는 강의 있어?", intent: ["today", "week"], include: ["t2"] },
-  { q: "수업 없는 시간에 할 만한 비교과 추천해 줘", intent: ["free", "programs"], exclude: ["o2", "o6"], anyOf: ["o1", "o3", "o4"] },
-  { q: "포인트 많이 주는 비교과 뭐야?", intent: ["programs", "points", "free"], include: ["o5"], exclude: ["o6"] },
+  { q: "수업 없는 시간에 할 만한 비교과 추천해 줘", intent: ["free", "programs"], exclude: ["o2"], anyOf: ["o1", "o3", "o4"] },
+  { q: "포인트 많이 주는 비교과 뭐야?", intent: ["programs", "points", "free"], include: ["o5"] },
   { q: "졸업까지 포인트 얼마나 남았어?", intent: ["points"] },
-  // 판단 재료를 쓰는지: 꿀 = 시간당 포인트 높고 안 겹치고 자리 남은 것 (o4), 겹치는 o2·자리 없는 o6 제외 (10/20)
-  { q: "꿀 비교과 있나?", intent: ["programs", "free", "points"], first: "o4", exclude: ["o2", "o6"] },
-  { q: "시간 별로 안 들고 포인트 잘 주는 거 추천해 줘", intent: ["programs", "free", "points"], include: ["o4"], exclude: ["o2", "o6", "o5"] },
+  // 판단 재료를 쓰는지: 꿀 = 시간당 포인트 높고 안 겹치고 자리 남은 것 (o4), 겹치는 o2 제외 (10/20)
+  { q: "꿀 비교과 있나?", intent: ["programs", "free", "points"], first: "o4", exclude: ["o2"] },
+  { q: "시간 별로 안 들고 포인트 잘 주는 거 추천해 줘", intent: ["programs", "free", "points"], include: ["o4"], exclude: ["o2", "o5"] },
   { q: "설문 안 낸 거 있어?", intent: ["programs", "today", "week"], include: ["s1"] },
   { q: "이번 주 학교 신청 기간 알려줘", intent: ["academic", "week"], include: ["a1"] },
   { q: "금요일에 뭐 있었지?", intent: ["week", "today"], include: ["e1"] },
@@ -69,7 +69,9 @@ export const CASES = [
 export function grade(c, ans) {
   const why = [];
   const ids = ans.picks.map((p) => p.id);
-  if (c.intent && !c.intent.includes(ans.intent)) why.push(`intent ${ans.intent}`);
+  // 질문 종류(intent)는 화면에 쓰이지 않음 → 범위 밖 판단이 맞는지만 본다 (10/19)
+  const wantOut = (c.intent || []).includes("out_of_scope");
+  if (wantOut !== (ans.intent === "out_of_scope")) why.push(`intent ${ans.intent}`);
   if (c.first && ids[0] !== c.first) why.push(`first ${ids[0] || "-"}`);
   for (const id of c.include || []) if (!ids.includes(id)) why.push(`missing ${id}`);
   for (const id of c.exclude || []) if (ids.includes(id)) why.push(`has ${id}`);

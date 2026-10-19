@@ -192,6 +192,7 @@ export function buildContext(
       if (info?.category) entry.category = info.category;
       // 판단 재료 (화면이 계산, 공개 정보): 걸리는 시간·회차 수·온라인·남은 자리·시간당 포인트 (10/20)
       for (const k of ["effort", "hours", "ptsPerHour", "sessions", "pick", "online", "seatsLeft"]) if (info?.[k] != null) entry[k] = info[k];
+      if (entry.seatsLeft === 0) return; // 자리 없는 건 보내지 않음 (10/19 비교 시험: 지침으로 막아도 모델이 자꾸 언급·추천)
       if (info?.when) {
         entry.when = info.when; // 수업과 안 겹치는 회차 (매주 회차면 "매주 수 10:00–13:00 (11/4~11/25)")
         entry.clashWithClass = false;
