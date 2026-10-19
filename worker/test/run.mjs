@@ -75,7 +75,7 @@ r = await call("/v1/ask", { question: "요약", context }, { origin: "https://ev
 check("다른 출처 거절", r.status === 403);
 r = await call("/v1/ask", { question: "요약", context }, { install: "" });
 check("설치 ID 없으면 거절", r.status === 400);
-r = await call("/v1/ask", null, { raw: "{" + " ".repeat(17000) + "}" });
+r = await call("/v1/ask", null, { raw: "{" + " ".repeat(33000) + "}" });
 check("큰 본문 거절", r.status === 413);
 
 // 5-2) 와일드카드 출처: 모든 확장 허용, 웹사이트는 막음

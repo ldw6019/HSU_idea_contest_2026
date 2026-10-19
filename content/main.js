@@ -2579,7 +2579,7 @@
       renderAI({ scroll: true });
       let r;
       try {
-        r = await send({ type: "aiAsk", question: q, context: built.context });
+        r = await send({ type: "aiAsk", question: q, context: ai.fitContext(built.context) });
       } catch (err) {
         if (isDeadContext(err)) return onDeadContext();
         r = { ok: false };
@@ -2594,7 +2594,7 @@
         while (chat.length > 30) chat.shift();
         return renderAI({ scroll: true });
       }
-      failNote = AI_FAIL_NOTE[r?.reason] || AI_FAIL_NOTE.default;
+      failNote = AI_FAIL_NOTE[r?.reason] || `${AI_FAIL_NOTE.default} (${[r?.status || "연결 안 됨", r?.reason, r?.field].filter(Boolean).join(" · ")})`; // 괄호 안 = 원인 찾기용
     }
     const a =
       intent === "academic" && !acadOn()
@@ -2740,9 +2740,9 @@
       aiPreviewOpen = preview.open;
       if (!preview.open) return;
       const { ai } = await mods;
-      preview.querySelector("pre").textContent = JSON.stringify(ai.buildContext(aiData()).context, null, 1);
+      preview.querySelector("pre").textContent = JSON.stringify(ai.fitContext(ai.buildContext(aiData()).context), null, 1);
     });
-    if (aiPreviewOpen) mods.then(({ ai }) => (preview.querySelector("pre").textContent = JSON.stringify(ai.buildContext(aiData()).context, null, 1)));
+    if (aiPreviewOpen) mods.then(({ ai }) => (preview.querySelector("pre").textContent = JSON.stringify(ai.fitContext(ai.buildContext(aiData()).context), null, 1)));
 
     content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, [presets, form, el("div", { class: "ai-foot" }, [counter, preview])])]));
     if (scroll) log.lastElementChild?.scrollIntoView({ block: "nearest" });

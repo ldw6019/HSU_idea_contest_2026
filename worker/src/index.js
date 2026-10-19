@@ -18,7 +18,7 @@ import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATE
 
 const LIMITS = {
   questionChars: 200,
-  askBodyBytes: 16000,
+  askBodyBytes: 32000, // 10/20: 16,000이면 실제 계정(비교과 30·할 일 40) 정보가 넘쳐 거절됐음. 확장도 14,000자로 맞춰 보냄
   classifyChars: 8000,
   titleChars: 120,
   maxTasks: 40,

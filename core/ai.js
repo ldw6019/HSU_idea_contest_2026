@@ -311,6 +311,21 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
 }
 
 /**
+ * 서버 크기 한도에 맞추기 (10/20: 실제 계정은 신청할 만한 비교과 30개 + 할 일 40개라 16,000자를 넘어 서버가 거절했음 → 기본 답변만 나옴)
+ *  넘치면 덜 급한 것부터 덜어 냄: 신청할 만한 비교과(마감 먼 것) → 할 일(마감 먼 것) → 내 비교과. 목록은 이미 마감 순
+ */
+export function fitContext(context, maxChars = 14000) {
+  const c = { ...context };
+  for (const k of ["openPrograms", "tasks", "myPrograms", "myEvents", "academic", "surveys"]) c[k] = [...(context[k] || [])];
+  const size = () => JSON.stringify(c).length;
+  const floors = { openPrograms: 8, tasks: 12, myPrograms: 6, myEvents: 4, academic: 3, surveys: 3 };
+  for (const k of ["openPrograms", "tasks", "myPrograms", "myEvents", "academic", "surveys"]) {
+    while (size() > maxChars && c[k].length > floors[k]) c[k].pop();
+  }
+  return c;
+}
+
+/**
  * (AI 연결 후) 서버에 묻기. 서버 주소가 없으면 쓰지 않는다.
  * 서버는 { intent, picks: [{id, reason}], message } 형식만 돌려준다 (worker/ 참고).
  * ※ background.js에서 부른다: 화면(content script)에서 부르면 출처가 e클래스 주소가 돼서 서버의 출처 검사에 막힌다.
@@ -326,7 +341,7 @@ export async function askRemote(endpoint, installId, question, context, { timeou
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) return { ok: false, status: res.status, reason: data.reason || data.error || null };
+    if (!res.ok) return { ok: false, status: res.status, reason: data.reason || data.error || null, field: data.field || null };
     return { ok: true, ...data };
   } finally {
     clearTimeout(timer);
