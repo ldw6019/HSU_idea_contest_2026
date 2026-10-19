@@ -240,3 +240,8 @@
   - 원인 코드: too_long(답이 길어 잘림) / format / key / credit / busy(회사 쪽 바쁨·속도 제한) / model_name / timeout / provider_down. 확장 안내 끝 괄호에 표시, `npx wrangler tail`에 한 줄 기록(질문·학생 정보는 안 남김)
   - "영어로 다섯 문장 이상" 같은 요청은 답이 길어져 잘림 → 2배 길이로 한 번만 다시 받고 서버가 250자로 자름 (가장 유력한 502 원인으로 추정)
   - 확장 기다리는 시간 15초 → 30초 (재시도 시간)
+- (사용자) 인젝션 시험 중부터 `502 · key`가 계속, 로그를 켜니 다시 됨 → tail 기록: `403 · forbidden · Request not allowed`
+  - 키 문제가 아니라 **지역 차단으로 추정**: Cloudflare는 학생과 가까운 데이터센터에서 서버를 돌리는데, 그곳이 홍콩처럼 Anthropic 지원 지역 밖이면 거절됨. 그때그때 데이터센터가 달라 됐다 안 됐다 함 (OpenAI·Workers에서 HKG일 때만 403이 난 사례 글 참고. 인젝션과는 무관한 우연으로 봄)
+  - wrangler.toml `[placement] region = "aws:us-east-1"`: 미국 클라우드 지역 근처 데이터센터에서 실행 (Cloudflare Placement Hints)
+  - 원인 코드 세분: 403 forbidden → region, 다른 403 → permission, 401 → key. tail 기록에 처리한 데이터센터(colo)도 남김(성공 ask_ok·실패 모두, 내용 없이)
+  - 학생 저장소 wrangler.toml에도 같은 줄 추가(사용자 로컬, 비밀값 없음)

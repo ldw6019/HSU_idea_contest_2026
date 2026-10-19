@@ -96,6 +96,8 @@ check("프리셋마다 요금·키 이름 있음", Object.values(PRESETS).every(
   const { errorCode } = await import("../src/providers.js");
   const mk = (status, detail, info) => Object.assign(new Error("model http"), { status, detail, info });
   check("401 → key", errorCode(mk(401, "authentication_error")) === "key");
+  check("403 forbidden(지역) → region", errorCode(mk(403, "forbidden", "Request not allowed")) === "region");
+  check("403 권한 → permission", errorCode(mk(403, "permission_error", "Your API key does not have permission")) === "permission");
   check("크레딧 부족 → credit", errorCode(mk(400, "invalid_request_error", "Your credit balance is too low to access the Anthropic API")) === "credit");
   check("529 → busy", errorCode(mk(529, "overloaded_error")) === "busy");
   check("모델 이름 틀림 → model_name", errorCode(mk(404, "not_found_error", "model: claude-x")) === "model_name");

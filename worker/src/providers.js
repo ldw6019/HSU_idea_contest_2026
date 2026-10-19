@@ -154,7 +154,11 @@ export function errorCode(err) {
   const st = err?.status;
   const d = `${err?.detail || ""} ${err?.info || ""}`.toLowerCase();
   if (/missing key/.test(err?.message || "")) return "no_key";
-  if (st === 401 || st === 403) return "key"; // 키가 틀렸거나 지워짐
+  // 403 forbidden "Request not allowed" = 지역 차단으로 추정: 서버가 그 순간 돈 Cloudflare 데이터센터(예: 홍콩)가
+  //  Anthropic 지원 지역이 아니면 거절됨. 같은 키로 됐다 안 됐다 함 (10/20 실제 겪음) → wrangler.toml [placement]로 미국에서 실행
+  if (st === 403 && /forbidden|not allowed/.test(d)) return "region";
+  if (st === 403) return "permission"; // 키는 맞는데 권한(워크스페이스·모델) 없음
+  if (st === 401) return "key"; // 키가 틀렸거나 지워짐
   if (/credit|balance|billing/.test(d)) return "credit"; // 크레딧 부족
   if (st === 429 || st === 529 || /overload|rate|resource_exhausted/.test(d)) return "busy"; // 회사 쪽이 바쁨·속도 제한
   if (st === 404 || /not_found|model/.test(d)) return "model_name"; // 모델 이름이 틀림·퇴역

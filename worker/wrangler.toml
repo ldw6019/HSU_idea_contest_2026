@@ -7,6 +7,12 @@ name = "hsuplus-ai"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
+# 실행 위치: 미국 데이터센터에서 실행 (10/20)
+#  Cloudflare는 학생과 가까운 데이터센터에서 서버를 돌리는데, 그곳이 홍콩처럼 Anthropic이 지원하지 않는 지역이면
+#  "403 forbidden · Request not allowed"로 거절됨(됐다 안 됐다 함). 미국 클라우드 지역 근처에서 돌리게 고정
+[placement]
+region = "aws:us-east-1"
+
 [vars]
 # ── 모델 바꾸기: 이 한 줄만 바꾸고 다시 배포 (목록·요금은 src/models.js) ──
 #   haiku-5.5 (Anthropic, 기본) | gemini-3.8-flash | gemini-2.5-flash-lite | mock(키 없이 시험)

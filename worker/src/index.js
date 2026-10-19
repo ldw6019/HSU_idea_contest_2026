@@ -182,11 +182,13 @@ export async function handle(req, env, { store }) {
         maxTokens: Math.max(600, Number(env.ASK_MAX_TOKENS ?? 600)), // 10/20: 400이면 문장이 잘려 빈 답이 나옴
       });
       await recordCost(store, r);
+      console.log(JSON.stringify({ ev: "ask_ok", colo: req.cf?.colo || null })); // 내용 없이 처리한 곳만
       return json(200, { ...cleanAnswer(r.output, body.context), model: r.model }, c.headers);
     } catch (err) {
       const code = errorCode(err);
       // wrangler tail로 원인을 볼 수 있게 (질문·학생 정보는 남기지 않고 오류 종류만)
-      console.log(JSON.stringify({ ev: "ask_model_error", code, status: err?.status || null, detail: err?.detail || null, info: err?.info || err?.message || null }));
+      // colo = 이 요청을 처리한 Cloudflare 데이터센터(예: ICN 서울, NRT 도쿄, HKG 홍콩). 지역 차단 확인용
+      console.log(JSON.stringify({ ev: "ask_model_error", code, status: err?.status || null, detail: err?.detail || null, info: err?.info || err?.message || null, colo: req.cf?.colo || null }));
       return json(502, { error: "model", reason: code, mode: "template" }, c.headers);
     }
   }
