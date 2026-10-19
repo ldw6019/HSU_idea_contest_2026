@@ -125,6 +125,10 @@ pages["/ko/program/all/view/903"] = detail("hidden", [["인문학 살롱", wk(7 
 pages["/ko/program/all/view/904"] = detail("hidden", [["2026 AI 해커톤", rel(10, 10, 0), rel(11, 18, 0), 20]], "1박 2일 해커톤");
 pages["/ko/program/all/view/905"] = detail("checkbox", [["집단상담(수10시)", wk(7 + 2, 10, 0), wk(28 + 2, 13, 0), 65], ["집단상담(목10시)", wk(7 + 3, 10, 0), wk(28 + 3, 13, 0), 65]], "총 12시간(3시간*4회) 집단상담. 운영방식: 대면");
 pages["/ko/program/all/view/201"] = detail("hidden", [["멘토링", rel(-20, 9, 0), rel(40, 23, 45), 15]], "멘토링 일정과 장소는 멘토와 협의하여 결정됩니다.");
+// 내 비교과(시작 대기·진행 중) 공개 상세: 카드의 포인트는 여기 회차 마일리지에서 (마이페이지 목록 포인트 칸은 이수 전 0)
+pages["/ko/program/all/view/101"] = detail("hidden", [["1차 AI 활용 학습법", rel(2, 15, 30), rel(2, 17, 30), 10, "3 명 / 30 명 신청완료"]], "AI 활용 학습법 워크숍");
+pages["/ko/program/all/view/102"] = detail("hidden", [["현직자 특강", rel(1, 18, 30), rel(1, 20, 0), 10, "40 명 / 80 명 신청완료"]], "현직자 특강");
+pages["/ko/program/all/view/202"] = detail("hidden", [["중독예방", rel(-20, 0, 0), rel(60, 23, 45), 5]], "온라인 교육");
 
 // 학교 학사일정 (가짜): 진행 중 신청 하나, 곧 시작하는 신청 하나
 const kdot = (x) => `${x.getFullYear()}.${p2(x.getMonth() + 1)}.${p2(x.getDate())}(Mon)`;

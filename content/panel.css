@@ -780,3 +780,6 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
   box-shadow: 0 6px 18px rgba(16, 24, 40, 0.25); opacity: 0; visibility: hidden; transform: translateY(-2px); transition: opacity 0.12s, transform 0.12s; pointer-events: none;
 }
 .info-tip:hover .tip, .info-tip:focus-within .tip { opacity: 1; visibility: visible; transform: none; }
+
+/* ---------- 비교과 카드 포인트 (신청·내 비교과 같은 모양, 조금 크게) 10/20 ---------- */
+.tcard .badge.program { display: inline-block; align-self: flex-start; margin-top: 1px; font-size: 13px; font-weight: 800; padding: 4px 10px; border-radius: 8px; letter-spacing: -0.01em; }

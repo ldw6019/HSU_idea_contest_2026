@@ -1873,6 +1873,17 @@
     return el("span", { class: "dline" }, [icon("clock"), el("span", { class: "dchip", text: "일정 미정", title: "기간만 공지돼 있고 세부 일정은 따로 안내돼요 (추후 공지, 회차마다 다름 등)" }), el("span", { class: "when", text: periodText(s) })]);
   }
 
+  // 내 비교과 포인트: 마이페이지 목록의 포인트 칸은 시작 대기·진행 중일 때 0으로 나옴(이수 뒤에 들어가는 듯, 10/20 확인)
+  //  → 공개 상세 화면의 회차 마일리지를 쓴다(내가 신청한 회차가 표시되면 그 회차만). 실제 확인한 9건은 회차끼리 점수가 모두 같았음
+  function minePoint(p) {
+    const ss = details[p.id]?.d?.sessions || [];
+    const pick = ss.some((s) => s.mine) ? ss.filter((s) => s.mine) : ss;
+    const pts = [...new Set(pick.map((s) => s.point).filter((n) => n > 0))].sort((a, b) => a - b);
+    if (pts.length === 1) return `${pts[0]}p`;
+    if (pts.length > 1) return `${pts[0]}~${pts[pts.length - 1]}p`;
+    return p.mileage > 0 ? `${p.mileage}p` : null;
+  }
+
   function myProgramCard(p) {
     const s = nextSession(p);
     const tier = s.kind === "exact" ? riskTier(s.start) : 5;
@@ -1883,6 +1894,7 @@
           el("div", { class: "tc-title", text: p.title }),
           el("div", { class: "tc-sub", text: [p.category, p.place || p.department].filter(Boolean).join(" · ") }),
         ]),
+        minePoint(p) ? el("span", { class: "badge program", title: "이수하면 받는 포인트 (학교 상세 화면 기준)", text: minePoint(p) }) : null,
       ]),
       el("div", { class: "tc-foot" }, [scheduleLine(p), el("span", { class: "tc-status plain", text: state })]),
     ]);
@@ -1906,7 +1918,7 @@
   function onlineRow(p) {
     const s = p.sessions[0];
     return el("a", { class: "todo quiet", href: p.url, target: "_blank", rel: "noopener" }, [
-      el("div", { class: "info" }, [el("div", { class: "name", text: p.title }), el("div", { class: "sub", text: `${periodText(s)}${p.phase === "wait" ? " · 시작 대기" : ""}` })]),
+      el("div", { class: "info" }, [el("div", { class: "name", text: p.title }), el("div", { class: "sub", text: [periodText(s), p.phase === "wait" ? "시작 대기" : "", minePoint(p) || ""].filter(Boolean).join(" · ") })]),
     ]);
   }
 
