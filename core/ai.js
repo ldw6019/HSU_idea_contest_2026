@@ -21,7 +21,7 @@ export const PRESETS = [
 ];
 
 export const OUT_OF_SCOPE =
-  "HSU PLUS는 수업·과제·비교과 일정만 도와드려요. 아래 버튼으로 물어보세요.";
+  "HSU Plus는 수업·과제·비교과 일정만 도와드려요. 아래 버튼으로 물어보세요.";
 
 /** 질문 정리: 공백 정리 + 글자 수 자르기 */
 export function sanitizeQuestion(q) {

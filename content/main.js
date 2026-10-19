@@ -21,6 +21,23 @@
   root.appendChild(css);
 
   // 요소 만들기 도우미. 학교 페이지에서 온 글자는 항상 textContent로만 넣는다 (코드 끼워넣기 방지).
+  // 로고 "+": 글자 대신 SVG (글꼴마다 굵기·위치가 달라지지 않게, 10/19 사용자)
+  const SVGNS = "http://www.w3.org/2000/svg";
+  function logoMark(cls = "logo") {
+    const wrap = document.createElement("span");
+    wrap.className = cls;
+    wrap.setAttribute("aria-hidden", "true");
+    const svg = document.createElementNS(SVGNS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("focusable", "false");
+    for (const [x, y, w, h] of [[10.25, 4.5, 3.5, 15], [4.5, 10.25, 15, 3.5]]) {
+      const r = document.createElementNS(SVGNS, "rect");
+      for (const [k, v] of Object.entries({ x, y, width: w, height: h, rx: 1.75, fill: "currentColor" })) r.setAttribute(k, v);
+      svg.appendChild(r);
+    }
+    wrap.appendChild(svg);
+    return wrap;
+  }
   const el = (tag, attrs = {}, children = []) => {
     const node = document.createElement(tag);
     for (const [k, v] of Object.entries(attrs)) {
@@ -55,7 +72,7 @@
   function renderDeadNotice() {
     body.replaceChildren(
       el("div", { class: "notice" }, [
-        el("p", { text: "HSU PLUS가 업데이트됐어요." }),
+        el("p", { text: "HSU Plus가 업데이트됐어요." }),
         el("p", { class: "sub", text: "이 페이지를 새로고침하면 다시 동작해요." }),
         el("button", { class: "btn", text: "페이지 새로고침", onclick: () => location.reload() }),
       ])
@@ -120,8 +137,8 @@
   ];
 
   // 디자인: 10/20 시안 A(또렷하게) 선택 — 지금 구조 그대로, 머리줄 로고·그라데이션, 둥근 탭 밑줄, e클래스 바탕 회색
-  const launcher = el("button", { class: "launcher", title: "HSU PLUS 열기" }, [el("span", { class: "logo", text: "+" })]);
-  const panel = el("section", { class: "panel hidden", "aria-label": "HSU PLUS" });
+  const launcher = el("button", { class: "launcher", title: "HSU Plus 열기", "aria-label": "HSU Plus 열기" }, [logoMark()]);
+  const panel = el("section", { class: "panel hidden", "aria-label": "HSU Plus" });
   // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
   const wideBtn = el("button", {
     class: "wide-toggle",
@@ -133,7 +150,7 @@
     },
   });
   const header = el("header", {}, [
-    el("div", { class: "brand" }, [el("span", { class: "logo", "aria-hidden": "true", text: "+" }), el("strong", { text: "HSU PLUS" }), el("span", { class: "brand-sub", text: "e클래스 도우미" })]),
+    el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" })]),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
@@ -563,7 +580,7 @@
     const missing = known.filter((r) => r.loggedIn === false).length + (conn && !conn.eclass ? 1 : 0);
     const tip = (t, d) => el("li", {}, [el("b", { text: t }), el("span", { text: d })]);
     return el("div", { class: "welcome" }, [
-      el("div", { class: "wl-head" }, [el("span", { class: "logo", text: "+" }), el("div", {}, [el("b", { text: "HSU PLUS를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
+      el("div", { class: "wl-head" }, [logoMark(), el("div", {}, [el("b", { text: "HSU Plus를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
       el("div", { class: "wl-sec", text: "1. 세 사이트에 로그인돼 있는지 확인" }),
       el("div", { class: "wl-sites" }, sites),
       missing
@@ -689,7 +706,8 @@
       ]);
     };
     return el("div", { class: "ac-box" }, [
-      el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" }), el("span", { class: "grow" }), el("a", { href: ACADEMIC_URL, target: "_blank", rel: "noopener", text: "전체 보기" }), acadSwitch("")]),
+      // 이번 주 탭에서는 끄는 스위치·전체 보기 없이 제목만 (10/19 사용자: 여기서 실수로 꺼 버리지 않게. 끄기는 캘린더·설정에서)
+      el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" })]),
       ...list.slice(0, 2).map(row), // 아래 할 일 목록을 너무 밀어내지 않게 2개까지 (나와 상관없는 건 ×로 숨김)
       list.length > 2 ? el("div", { class: "ac-more", text: `그 밖에 ${list.length - 2}개는 캘린더에서` }) : null,
       unhide,
@@ -1052,7 +1070,9 @@
     const monday = weekRange().start;
     monday.setDate(monday.getDate() + 7 * offset);
     const sunday = addDays(monday, 7);
-    const sub = el("div", { class: "cal-sub" }, [el("span", { class: "title", text: `${offset ? "다음 주" : "이번 주"} · ${md(monday)}–${md(addDays(monday, 6))}` }), el("div", { class: "seg-mini-wrap" }, [weekBtn(0, "이번 주"), weekBtn(1, "다음 주")])]);
+    // 토·일 버튼은 위쪽 이번 주/다음 주 옆 (10/19 사용자). 펼칠지는 아래에서 일정을 센 뒤 정해서 여기 붙인다
+    const subTools = el("div", { class: "cal-sub-tools" }, [el("div", { class: "seg-mini-wrap" }, [weekBtn(0, "이번 주"), weekBtn(1, "다음 주")])]);
+    const sub = el("div", { class: "cal-sub" }, [el("span", { class: "title", text: `${md(monday)}–${md(addDays(monday, 6))}` }), subTools]); // "이번 주"는 옆 버튼이 보여 주므로 날짜만
 
     if (!week) return [sub, el("p", { class: "placeholder", text: "불러오는 중…" })];
     const parts = [sub];
@@ -1188,18 +1208,18 @@
 
     if (week.ok && !classes.length && !extra.length) parts.push(el("p", { class: "placeholder", text: offset ? "다음 주 수업·일정이 없어요." : "이번 주 수업·일정이 없어요." }));
     parts.push(grid);
-    parts.push(
-      el("div", { class: "cal-foot" }, [
-        el("span", { class: "tt-legend", text: "흰 칸 내 비교과 · 보라 직접 넣은 일정·매주 반복(알바 등) · 요일을 누르면 그날 목록" }),
-        el("button", {
-        class: "weekend-toggle",
-        text: weekendOpen ? "토·일 접기" : `토·일 펼치기${weekendCount || weekendDues ? ` (${[weekendCount ? `일정 ${weekendCount}` : "", weekendDues ? `마감 ${weekendDues}` : ""].filter(Boolean).join(" · ")})` : ""}`,
+    const weekendN = weekendCount + weekendDues;
+    subTools.appendChild(
+      el("button", {
+        type: "button",
+        class: `seg-mini weekend-btn${weekendOpen ? " active" : ""}`,
+        "aria-pressed": weekendOpen ? "true" : "false",
+        title: weekendOpen ? "토·일 접기" : `토·일 펼치기${weekendN ? ` (${[weekendCount ? `일정 ${weekendCount}` : "", weekendDues ? `마감 ${weekendDues}` : ""].filter(Boolean).join(" · ")})` : ""}`,
         onclick: () => {
           calWeekendOpen = !weekendOpen;
           renderCalendar();
         },
-        }),
-      ])
+      }, [el("span", { text: "토·일" }), !weekendOpen && weekendN ? el("span", { class: "wk-n", text: String(weekendN) }) : null])
     );
     if (calDay) {
       const d = fromYmd(calDay);
@@ -1320,11 +1340,6 @@
       grid.appendChild(week);
     }
     parts.push(grid);
-    parts.push(
-      el("div", { class: "cal-foot" }, [
-        el("span", { class: "tt-legend", text: `수업은 주간에서 · 파랑 내 비교과 · 보라 직접 넣은 일정 · 마감 = 과제·퀴즈·강의${panel.classList.contains("wide") ? "" : " · 이름이 잘리면 날짜를 누르거나 '넓게 보기'"}` }),
-      ])
-    );
     if (calDay) {
       const d = fromYmd(calDay);
       parts.push(dayDetail(calDay, [...allDayOf(d, items.filter((x) => x.allDay)), ...items.filter((x) => !x.allDay && sameDay(x.start, d))]));
@@ -1608,7 +1623,7 @@
   //  ┃ 과목명 · 수강률
   //  ┃ ⏱ [D-4] 10/16(금) 23:55            ⚠ 제출 필요     ← 연회색 아래 띠
   // 왼쪽 라벨 색 = 마감 위험도 5단계(riskTier). 출석이 어려운 강의는 🚨 안내문 + 필요/남은 시간
-  const SVGNS = "http://www.w3.org/2000/svg";
+  // (SVGNS는 맨 위 logoMark 옆에 정의)
   const ICONS = {
     clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
     warn: ["M10.3 4 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z", "M12 9.5v4", "M12 17h.01"],
@@ -2143,7 +2158,7 @@
       mine: g ? g.surveys.length + g.wait.length + g.progress.length + g.online.length : null,
     };
     const hot = {
-      apply: !!soon?.some((it) => isUrgent(it.due)),
+      apply: false, // 신청 쪽 빨간 점은 뺌 (10/19 사용자: 할 일이 아니라 고르는 목록)
       // 설문을 안 낸 게 있거나, 날짜가 정해진 회차가 이틀 안이면 빨간 점
       mine: !!g && (g.surveys.length > 0 || [...g.wait, ...g.progress].some((p) => exactSessions(p).some((s) => isUrgent(s.start)))),
     };
@@ -2238,14 +2253,29 @@
   // ---------- 신청 탭 ----------
   // 위: 분류 고르기(전체 / 일정 확정 / 온라인 / 제출형 / 상담·개별 / 장기·기타) + "수업과 안 겹치는 것만" + 정렬
   // 카드: 분류 칩, 일정 한 줄, 신청 마감. 회차가 여러 개면 "회차 보기"로 회차마다 시각·포인트·정원·수업 겹침
+  // 신청 탭 분류 (10/19 사용자): 일정 모양이 아니라 "무슨 활동인지"로. 카드의 작은 꼬리표는 그대로 일정 모양(날짜·시각 확정 등)
+  //  한 프로그램은 한 칸에만: 프로젝트(제목) → 상담 → 과제 제출 → 온라인 → 장기 → 특강·행사(날짜가 정해진 것) → 기타
   const PGROUPS = [
     { id: "all", label: "전체" },
-    { id: "fixed", label: "일정 확정", cats: ["exact", "recurring", "date_only"] },
-    { id: "online", label: "온라인", cats: ["online"] },
-    { id: "submission", label: "제출형", cats: ["submission"] },
-    { id: "consult", label: "상담·개별", cats: ["consult"] },
-    { id: "etc", label: "장기·기타", cats: ["long_term", "open"] },
+    { id: "event", label: "특강·행사", tip: "날짜·시각이 정해진 특강·행사·캠프 (매주 하는 것 포함)" },
+    { id: "online", label: "온라인", tip: "기간 안에 온라인으로 수강" },
+    { id: "submission", label: "과제 제출", tip: "마감까지 글·영상·결과물 제출" },
+    { id: "project", label: "프로젝트", tip: "프로젝트·해커톤·공모전·경진대회처럼 결과물을 만드는 활동" },
+    { id: "consult", label: "상담·개별", tip: "신청 뒤 개별로 일정을 잡는 상담·코칭" },
+    { id: "long", label: "장기", tip: "기간 내내 이어지는 활동 (서포터즈·멘토링 등)" },
+    { id: "etc", label: "기타", tip: "세부 일정이 따로 안내되는 것" },
   ];
+  const PROJECT_TITLE = /(프로젝트|project|해커톤|hackathon|공모전|경진대회|챌린지|아이디어\s*대회)/i;
+  function progGroupOf(it, cat) {
+    if (PROJECT_TITLE.test(it.title || "")) return "project";
+    if (!cat) return null;
+    if (cat === "consult") return "consult";
+    if (cat === "submission") return "submission";
+    if (cat === "online") return "online";
+    if (cat === "long_term") return "long";
+    if (["exact", "recurring", "date_only"].includes(cat)) return "event";
+    return "etc";
+  }
   let progGroup = "all";
   let progFree = false; // 수업과 안 겹치는 것만
   let progSort = "due"; // due | point
@@ -2393,10 +2423,7 @@
     if (!programs.ok) return [failCard(programs.error?.message, () => loadPrograms({ force: true }))];
     const now = Date.now();
     const all = programs.data.filter((it) => !it.due || new Date(it.due).getTime() >= now);
-    const groupOf = (it) => {
-      const cat = classOf(it)?.category;
-      return cat ? PGROUPS.find((g) => g.cats?.includes(cat))?.id : null;
-    };
+    const groupOf = (it) => progGroupOf(it, classOf(it)?.category);
     const counts = Object.fromEntries(PGROUPS.map((g) => [g.id, g.id === "all" ? all.length : all.filter((it) => groupOf(it) === g.id).length]));
     let list = progGroup === "all" ? all : all.filter((it) => groupOf(it) === progGroup);
     if (progFree) list = list.filter((it) => applyInfo(it)?.free !== false);
@@ -2408,6 +2435,7 @@
       PGROUPS.map((g) =>
         el("button", {
           class: g.id === progGroup ? "fchip active" : "fchip",
+          title: g.tip || null,
           text: `${g.label} ${counts[g.id]}`,
           onclick: () => {
             progGroup = g.id;
@@ -2479,15 +2507,8 @@
   let aiBusy = false;
   let M_AI = null; // core/ai.js (조사 고치기 등 화면 그릴 때 바로 쓰려고)
   mods.then((m) => (M_AI = m.ai));
-  const AI_FAIL_NOTE = {
-    user: "오늘 AI 질문 횟수를 다 써서 기본 답변으로 보여 드려요. 내일 다시 쓸 수 있어요.",
-    rate: "질문이 너무 빨라요. 잠깐 뒤에 다시 물어봐 주세요. 우선 기본 답변이에요.",
-    global: "오늘 AI 사용량이 많아 기본 답변으로 보여 드려요.",
-    busy: "AI 회사 서버가 잠깐 바빠서 기본 답변으로 보여 드려요. 조금 뒤 다시 물어봐 주세요. (502 · busy)",
-    timeout: "AI 답이 늦어져 기본 답변으로 보여 드려요. 다시 물어봐 주세요. (502 · timeout)",
-    region: "AI 서버가 잠깐 지원 지역 밖에서 실행돼 기본 답변으로 보여 드려요. 다시 물어봐 주세요. (502 · region)",
-    default: "AI 서버에 연결하지 못해 기본 답변으로 보여 드려요.",
-  };
+  // AI가 답하지 못했을 때 꼬리표에 붙일 짧은 사유 (10/19 사용자: 길게 쓰지 말고 "기본 답변 · 사유"만)
+  const AI_FAIL_TAG = { user: "오늘 질문 횟수 다 씀", rate: "질문이 너무 빠름", global: "오늘 사용량 초과", busy: "AI 서버 바쁨", timeout: "응답 지연", region: "일시적 연결 문제", too_large: "보낼 정보가 너무 큼" };
   const chat = []; // { who: "me"|"bot", text, picks?, note? } (이 탭을 연 동안만 기억)
   let aiPreviewOpen = false;
 
@@ -2573,9 +2594,19 @@
     // 직접 쓴 질문 + AI 서버 있음 → 서버에 묻는다 (보내는 건 "AI에 보낼 내용 보기"와 같은 내용)
     if (!presetId && AI_ENDPOINT && ai.clearlyOutOfScope(q)) {
       // 코드·번역·과제 정답 같은 뻔한 범위 밖 질문은 서버에 보내지 않고 바로 안내 (비용 0, 한도도 안 씀)
-      chat.push({ who: "bot", text: ai.OUT_OF_SCOPE, picks: [] });
+      chat.push({ who: "bot", text: ai.OUT_OF_SCOPE, picks: [], tag: "기본 답변 · 범위 밖 질문" });
       while (chat.length > 30) chat.shift();
       return renderAI({ scroll: true });
+    }
+    // 추천 버튼(브라우저 안 기본 답변)은 바로 계산되지만 1초쯤 "생각하는 중…" 뒤에 보여 줌 (10/19 사용자: 즉시 뜨면 어색함)
+    if (presetId) {
+      if (aiBusy) return chat.pop();
+      aiBusy = true;
+      chat.push({ who: "bot", text: "생각하는 중…", pending: true });
+      renderAI({ scroll: true });
+      await new Promise((r) => setTimeout(r, 900));
+      aiBusy = false;
+      chat.pop();
     }
     if (!presetId && AI_ENDPOINT) {
       if (aiBusy) return chat.pop();
@@ -2595,17 +2626,19 @@
         // 10/20 "문장 안에 이름" 모양: 문장 속 {t1}을 진짜 이름·D-day 칩으로 바꿔 그림 (카드 목록은 안 띄움)
         const refs = {};
         for (const p of r.picks || []) if (built.refs.get(p.id)) refs[p.id] = built.refs.get(p.id);
-        chat.push({ who: "bot", text: r.message || (Object.keys(refs).length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), refs, ai: true });
+        const refused = r.intent === "out_of_scope";
+        chat.push({ who: "bot", text: r.message || (Object.keys(refs).length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), refs, ai: true, tag: refused ? "AI 답변 · 범위 밖 질문" : "AI 답변" });
         while (chat.length > 30) chat.shift();
         return renderAI({ scroll: true });
       }
-      failNote = AI_FAIL_NOTE[r?.reason] || `${AI_FAIL_NOTE.default} (${[r?.status || "연결 안 됨", r?.reason, r?.field].filter(Boolean).join(" · ")})`; // 괄호 안 = 원인 찾기용
+      // 짧은 사유만 꼬리표로. 모르는 원인은 코드(원인 찾기용)
+      failNote = AI_FAIL_TAG[r?.reason] || `연결 실패 (${[r?.status || "연결 안 됨", r?.reason, r?.field].filter(Boolean).join(" · ")})`;
     }
     const a =
       intent === "academic" && !acadOn()
         ? { text: "학사일정 보기를 꺼 두었어요. 캘린더 탭 아래나 '연결 상태 · 설정'의 학사일정 스위치를 켜면 알려 드릴게요.", picks: [] }
         : ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
-    chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: [failNote, a.note].filter(Boolean).join(" ") || null });
+    chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: a.note || null, tag: failNote ? `기본 답변 · ${failNote}` : null });
     while (chat.length > 30) chat.shift();
     renderAI({ scroll: true });
   }
@@ -2701,7 +2734,7 @@
     if (current !== "ai") return;
     const loadingAny = eclassLoading || programsLoading || mineLoading || loading;
     const head = el("div", { class: "ai-head" }, [
-      el("div", { class: "ai-title" }, [el("strong", { text: "HSU PLUS AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? " on" : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
+      el("div", { class: "ai-title" }, [el("strong", { text: "HSU Plus AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? " on" : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
       el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
     ]);
 
@@ -2712,14 +2745,14 @@
       const parts = [bubble];
       if (m.picks?.length) parts.push(el("div", { class: "ai-picks" }, m.picks.map(pickRow)));
       if (m.note) parts.push(el("div", { class: "ai-note", text: m.note }));
-      if (m.ai) parts.push(el("div", { class: "ai-tag", text: "AI 답변 · 밑줄 이름을 누르면 그 화면으로 · 이름·D-day는 학교 정보 그대로" }));
+      if (m.tag) parts.push(el("div", { class: `ai-tag${/^기본 답변/.test(m.tag) ? " fallback" : ""}`, text: m.tag }));
       log.appendChild(el("div", { class: `msg ${m.who}` }, parts));
     }
 
     const presets = el(
       "div",
       { class: "ai-presets" },
-      PRESET_LIST.map((p) => el("button", { class: "chip", text: p.label, onclick: () => ask(p.label, p.id) }))
+      PRESET_LIST.map((p) => el("button", { class: "chip", text: p.label, disabled: aiBusy ? "" : null, onclick: () => ask(p.label, p.id) }))
     );
     const input = el("input", { class: "ai-input", type: "text", maxlength: "200", placeholder: "예: 이번 주 과제 뭐 남았어?" });
     const counter = el("span", { class: "ai-count", text: "0/200" });
@@ -2817,7 +2850,7 @@
         wipeBtn,
       ]),
       settingsNote,
-      el("p", { class: "set-ver", text: `HSU PLUS ${chrome.runtime.getManifest?.().version || ""} · 학생 제작 프로토타입, 학교 공식 서비스가 아니에요 · 학교 사이트는 읽기만 하고 비밀번호는 저장하지 않아요` }),
+      el("p", { class: "set-ver", text: `HSU Plus ${chrome.runtime.getManifest?.().version || ""} · 학생 제작 프로토타입, 학교 공식 서비스가 아니에요 · 학교 사이트는 읽기만 하고 비밀번호는 저장하지 않아요` }),
     ]),
   ]);
 

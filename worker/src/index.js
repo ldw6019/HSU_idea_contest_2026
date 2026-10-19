@@ -24,7 +24,7 @@ const LIMITS = {
   maxTasks: 40,
   maxPrograms: 30,
 };
-const OUT_OF_SCOPE_MSG = "HSU PLUS는 수업·과제·비교과 일정만 도와드려요. 아래 버튼으로 물어보세요.";
+const OUT_OF_SCOPE_MSG = "HSU Plus는 수업·과제·비교과 일정만 도와드려요. 아래 버튼으로 물어보세요.";
 
 const memoryStore = new MemoryStore(); // D1이 연결되지 않았을 때(로컬 시험)
 

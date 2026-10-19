@@ -839,3 +839,19 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 .ai-ref.k-event .nm { color: var(--ot-ev); }
 .ai-ref .tail { white-space: nowrap; }
 .ai-ref .josa { color: var(--ot-text); font-weight: 400; }
+
+/* ---------- 10/19 디테일 다듬기 ---------- */
+/* 로고 "+" SVG */
+.logo { padding-bottom: 0; font-size: 0; }
+.logo svg { width: 72%; height: 72%; display: block; }
+.launcher .logo svg { width: 74%; height: 74%; }
+.wl-head .logo svg { width: 66%; height: 66%; }
+/* 주간: 토·일 버튼을 이번 주/다음 주 옆에 */
+.cal-sub-tools { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.weekend-btn { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--ot-line); background: #fff; padding: 3px 9px; border-radius: 8px; line-height: 1.5; }
+.weekend-btn:hover { color: var(--ot-text); border-color: #c9d0db; }
+.weekend-btn.active { background: var(--ot-primary); border-color: var(--ot-primary); color: #fff; }
+.weekend-btn .wk-n { min-width: 16px; padding: 0 4px; border-radius: 999px; background: var(--ot-today-bg); color: var(--ot-primary); font-size: 10.5px; font-weight: 800; line-height: 16px; text-align: center; }
+/* AI 꼬리표: 기본 답변으로 대신했을 때는 조금 진하게 */
+.ai-tag.fallback { color: var(--ot-sub); }
+.chip[disabled] { opacity: 0.55; cursor: default; }
