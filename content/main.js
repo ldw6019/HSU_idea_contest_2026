@@ -53,6 +53,22 @@
 
   const send = (msg) => chrome.runtime.sendMessage(msg);
 
+  // ---------- 시연 모드 (10/21) ----------
+  //  "연결 상태 · 설정"에서 켜면 학교 데이터 대신 core/demo.js의 가짜 데이터로 보여 준다(이 크롬에만 저장).
+  //  실제 e클래스 화면·글꼴 그대로 → README 그림·시연 영상·발표용. 학교 사이트에는 요청하지 않고, 내 설정(sync)도 건드리지 않는다
+  let DEMO = null; // 켜져 있으면 buildDemo() 결과
+  const demoReady = chrome.storage.local
+    .get("ui:demo")
+    .then((v) => (v["ui:demo"] ? import(chrome.runtime.getURL("core/demo.js")).then((m) => (DEMO = m.buildDemo(new Date()))) : null))
+    .catch(() => null);
+  async function setDemo(on) {
+    try {
+      if (on) await chrome.storage.local.set({ "ui:demo": 1 });
+      else await chrome.storage.local.remove("ui:demo");
+    } catch {}
+    location.reload(); // 데이터·화면을 처음부터 다시 (섞이지 않게)
+  }
+
   // 확장을 새로고침(업데이트)하면, 그 전에 열려 있던 e클래스 탭의 옛 코드는 확장과 연결이 끊긴다
   // ("Extension context invalidated"). 오류로 남기지 않고, 패널에 "페이지 새로고침" 안내만 띄운다.
   let deadContext = false;
@@ -149,8 +165,11 @@
       rerender();
     },
   });
+  // 시연 모드일 때 머리줄에 표시 (가짜 데이터라는 걸 잊지 않게)
+  const demoBadge = el("span", { class: "demo-badge", text: "시연 모드", hidden: "" });
+  demoReady.then((d) => d && demoBadge.removeAttribute("hidden"));
   const header = el("header", {}, [
-    el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" })]),
+    el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" }), demoBadge]),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
@@ -193,7 +212,10 @@
     loading = true;
     if (current === "week") renderWeek();
     try {
-      week = await send({ type: "getTimetable", force });
+      if (await demoReady) {
+        const { info } = await mods;
+        week = { ok: true, items: info.parseTimetable(DEMO.timetable), fetchedAt: Date.now(), fromCache: false };
+      } else week = await send({ type: "getTimetable", force });
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
       week = { ok: false, items: [], error: { kind: "network", message: "백그라운드와 통신하지 못했어요: " + err.message } };
@@ -251,6 +273,7 @@
   }
   /** 내 설정 묶음(ns) 전체 읽기 → { id: 값 }. legacyKey: 예전 버전이 이 브라우저에만 저장하던 키 (한 번 옮기고 지움) */
   async function userMap(ns, legacyKey) {
+    if (await demoReady) return ns === "ev" ? { ...DEMO.userEvents } : {}; // 시연 모드: 내 설정 대신 가짜 일정만
     const out = {};
     try {
       const all = await chrome.storage.sync.get(null);
@@ -269,6 +292,7 @@
   }
   /** 항목 하나 저장 (value가 null이면 지움) */
   function userPut(ns, id, value) {
+    if (DEMO) return; // 시연 모드에서 바꾼 건 저장하지 않음 (끄면 원래대로)
     const k = `${ns}|${id}`;
     if (value == null) {
       delete pending.set[k];
@@ -1756,7 +1780,7 @@
 
   // ================================================================ M2: e클래스 과제·영상, 비교과
   // 공용 모듈(공통 형식, 캐시, 어댑터)을 동적으로 불러온다 (content script는 import문을 못 씀)
-  const mods = Promise.all([
+  const realMods = Promise.all([
     import(chrome.runtime.getURL("core/cache.js")),
     import(chrome.runtime.getURL("adapters/eclass.js")),
     import(chrome.runtime.getURL("adapters/hsportal.js")),
@@ -1767,9 +1791,22 @@
     import(chrome.runtime.getURL("adapters/hansung.js")),
     import(chrome.runtime.getURL("core/config.js")),
   ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung, config]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung, config }));
+  // 시연 모드면 저장(캐시)을 건너뛰고, e클래스·시간표를 가짜 HTML로 (학교에 요청 안 함)
+  const mods = Promise.all([realMods, demoReady, import(chrome.runtime.getURL("adapters/info.js"))]).then(([m, demo, info]) => {
+    if (!demo) return m;
+    m.eclass.useDemo(demo.learnHtml);
+    const demoDoc = new DOMParser().parseFromString(demo.mainPage, "text/html");
+    return {
+      ...m,
+      info,
+      eclass: { ...m.eclass, fetchEclass: () => m.eclass.fetchEclass(demoDoc) },
+      cache: { ...m.cache, getOrFetch: async (_k, _t, fn) => ({ data: await fn(), fetchedAt: Date.now(), fromCache: false }), read: async () => null, write: async () => {} },
+    };
+  });
 
   // 다른 학교 사이트 페이지 글은 백그라운드가 받아 준다
   async function getText(url) {
+    if (DEMO) return DEMO.siteHtml(url);
     const r = await send({ type: "fetchText", url });
     if (!r || r.ok === false) throw new Error(r?.error?.message || `요청 실패 (${r?.status})`);
     return r.text;
@@ -2800,7 +2837,21 @@
   let wipeArmed = false;
   const settingsNote = el("p", { class: "set-note" });
   const setOpts = el("div", { class: "set-opts" }); // 켜고 끄는 것들 (rerender 때 다시 그림)
-  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"));
+  function demoSwitch() {
+    const on = !!DEMO;
+    return el("button", {
+      type: "button",
+      class: `sw${on ? " on" : ""}`,
+      role: "switch",
+      "aria-checked": on ? "true" : "false",
+      title: on ? "시연 모드: 학교 데이터 대신 가짜 데이터를 보여 줘요. 누르면 끄고 다시 불러와요." : "README 그림·시연 영상·발표용. 실제 학교 데이터 대신 가짜 데이터를 보여 줘요 (이 크롬에만, 내 설정은 그대로).",
+      onclick: (e) => {
+        e.stopPropagation();
+        setDemo(!on);
+      },
+    }, [el("span", { class: "sw-label", text: "시연 모드 (가짜 데이터)" }), el("span", { class: "sw-track" }, [el("span", { class: "sw-knob" })])]);
+  }
+  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"), demoSwitch());
   const wipeBtn = el("button", {
     class: "small danger",
     text: "내 데이터 모두 지우기",
@@ -2867,6 +2918,11 @@
 
   let conn = null; // 처음 안내에 쓰는 연결 결과 { eclass: bool, sites: [{name, loggedIn, loginUrl}] }
   async function checkStatus() {
+    if (await demoReady) {
+      conn = { eclass: true, sites: [{ name: "비교과 (스마트자기관리시스템)", loggedIn: true }, { name: "종합정보시스템", loggedIn: true }] };
+      statusList.replaceChildren(...["e클래스", "비교과 (스마트자기관리시스템)", "종합정보시스템"].map((n) => statusRow(n, true, "시연 모드 (가짜 데이터)")));
+      return;
+    }
     statusList.replaceChildren(el("li", { class: "loading", text: "확인 중…" }));
     const eclassOk = document.body.innerText.includes("로그아웃");
     conn = { eclass: eclassOk, sites: null };

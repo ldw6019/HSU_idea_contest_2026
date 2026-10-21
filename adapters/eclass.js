@@ -11,7 +11,14 @@ import { runLimited } from "../core/limit.js";
 
 const BASE = "https://learn.hansung.ac.kr";
 
+// 시연 모드(10/21): 학교 대신 가짜 HTML을 주는 함수를 끼울 수 있게
+let demoHtml = null;
+export function useDemo(fn) {
+  demoHtml = fn;
+}
+
 async function getDoc(path) {
+  if (demoHtml) return new DOMParser().parseFromString(demoHtml(BASE + path), "text/html");
   const res = await fetch(BASE + path, { credentials: "include", cache: "no-store" });
   if (!res.ok) throw new Error(`e클래스 요청 실패 (${res.status})`);
   return new DOMParser().parseFromString(await res.text(), "text/html");

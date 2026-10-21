@@ -855,3 +855,10 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 /* AI 꼬리표: 기본 답변으로 대신했을 때는 조금 진하게 */
 .ai-tag.fallback { color: var(--ot-sub); }
 .chip[disabled] { opacity: 0.55; cursor: default; }
+
+/* ---------- 시연 모드 표시 (10/21) ---------- */
+.demo-badge { flex: none; margin-left: 2px; padding: 1px 7px; border-radius: 999px; background: #ffd56b; color: #5a4100; font-size: 11px; font-weight: 800; letter-spacing: -0.2px; }
+.demo-badge[hidden] { display: none; }
+.brand strong, .wide-toggle { white-space: nowrap; }
+.brand:has(.demo-badge:not([hidden])) .brand-sub { display: none; } /* 시연 모드일 땐 부제 대신 표시 (좁은 패널에서 줄바꿈 방지) */
+.panel.wide .brand:has(.demo-badge:not([hidden])) .brand-sub { display: inline; }
