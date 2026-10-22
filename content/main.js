@@ -56,6 +56,7 @@
   // ---------- 시연 모드 (10/21) ----------
   //  "연결 상태 · 설정"에서 켜면 학교 데이터 대신 core/demo.js의 가짜 데이터로 보여 준다(이 크롬에만 저장).
   //  실제 e클래스 화면·글꼴 그대로 → README 그림·시연 영상·발표용. 학교 사이트에는 요청하지 않고, 내 설정(sync)도 건드리지 않는다
+  //  10/23: 그림에 티 나지 않게 머리줄 표시는 없앰, 연결 상태도 "연결됨"으로. 켜져 있는지는 설정 스위치로만 알 수 있음. 최종 배포 전 제거 예정
   let DEMO = null; // 켜져 있으면 buildDemo() 결과
   const demoReady = chrome.storage.local
     .get("ui:demo")
@@ -165,11 +166,8 @@
       rerender();
     },
   });
-  // 시연 모드일 때 머리줄에 표시 (가짜 데이터라는 걸 잊지 않게)
-  const demoBadge = el("span", { class: "demo-badge", text: "시연 모드", hidden: "" });
-  demoReady.then((d) => d && demoBadge.removeAttribute("hidden"));
   const header = el("header", {}, [
-    el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" }), demoBadge]),
+    el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" })]),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
   ]);
   const tabBar = el("nav", { class: "tabs" });
@@ -2920,7 +2918,7 @@
   async function checkStatus() {
     if (await demoReady) {
       conn = { eclass: true, sites: [{ name: "비교과 (스마트자기관리시스템)", loggedIn: true }, { name: "종합정보시스템", loggedIn: true }] };
-      statusList.replaceChildren(...["e클래스", "비교과 (스마트자기관리시스템)", "종합정보시스템"].map((n) => statusRow(n, true, "시연 모드 (가짜 데이터)")));
+      statusList.replaceChildren(...["e클래스", "비교과 (스마트자기관리시스템)", "종합정보시스템"].map((n) => statusRow(n, true, "연결됨")));
       return;
     }
     statusList.replaceChildren(el("li", { class: "loading", text: "확인 중…" }));

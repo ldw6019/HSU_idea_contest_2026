@@ -9,30 +9,33 @@ e클래스 화면 안에 보여주는 크롬 확장 프로그램 프로토타입
 > 학생이 만든 프로토타입이며, 학교 공식 서비스가 아닙니다.
 
 ## 화면
-> 아래 화면은 모두 **가짜 데이터**로 만든 예시입니다. 실제 계정 정보는 들어 있지 않습니다. (`node tools/screenshots.mjs`로 다시 만들 수 있음)
+> 아래 화면은 모두 **가짜 데이터**로 찍은 예시입니다(실제 e클래스 위에서 시연 모드, `docs/DEMO.md`). 실제 계정 정보는 들어 있지 않습니다.
 
 <table>
 <tr>
-<td align="center"><img src="docs/images/panel-week.png" width="250"><br><sub>이번 주: 남은 강의·과제·퀴즈·비교과</sub></td>
-<td align="center"><img src="docs/images/panel-programs.png" width="250"><br><sub>비교과: 졸업 포인트, 설문 필요, 내 일정</sub></td>
-<td align="center"><img src="docs/images/panel-ai.png" width="250"><br><sub>AI: 자주 묻는 질문 버튼</sub></td>
+<td align="center"><img src="docs/images/panel-week.png" width="400"><br><sub>이번 주 · 강의: 출석까지 남은 시청 시간, 출석이 어려운 강의, 위쪽에 학사 신청 기간</sub></td>
+<td align="center"><img src="docs/images/panel-week-assign.png" width="400"><br><sub>이번 주 · 과제: 마감 순, 제출 필요 표시</sub></td>
 </tr>
 <tr>
-<td align="center"><img src="docs/images/panel-calendar.png" width="250"><br><sub>캘린더(주간): 수업 + 비교과 + 직접 넣은 일정, 요일별 마감</sub></td>
-<td align="center"><img src="docs/images/panel-calendar-month.png" width="250"><br><sub>캘린더(월간): 비교과·마감·직접 넣은 일정</sub></td>
-<td align="center"><img src="docs/images/panel-apply.png" width="250"><br><sub>비교과 신청: 일정 분류, 회차별 수업 겹침</sub></td>
+<td align="center"><img src="docs/images/panel-calendar.png" width="400"><br><sub>캘린더 · 주간: 시간표 + 비교과 + 직접 넣은 일정, 요일별 마감</sub></td>
+<td align="center"><img src="docs/images/panel-calendar-month.png" width="400"><br><sub>캘린더 · 월간: 며칠 이어지는 일정은 막대로, 마감·비교과·학사일정</sub></td>
+</tr>
+<tr>
+<td align="center"><img src="docs/images/panel-apply.png" width="400"><br><sub>비교과 · 신청: 종류별 분류, 포인트, 내 시간표와 겹치는 회차</sub></td>
+<td align="center"><img src="docs/images/panel-programs.png" width="400"><br><sub>비교과 · 내 비교과: 졸업 포인트, 이번 학기 인정·이월, 설문 필요</sub></td>
+</tr>
+<tr>
+<td align="center" colspan="2"><img src="docs/images/panel-ai.png" width="400"><br><sub>AI: 직접 쓴 질문에 내 실제 일정·마감으로 답 (항목 이름을 눌러 바로 이동)</sub></td>
 </tr>
 </table>
-
-<img src="docs/images/course-page.png" width="760"><br><sub>강의실(과목 페이지): 출석 진도, 더 들어야 할 시간, 과제 제출 여부</sub>
 
 ## 주요 기능
 - **이번 주** — 남은 강의·과제·퀴즈·비교과를 마감 순으로. 마감 위험도 색, 출석까지 남은 시청 시간, 지금부터 들어도 출석이 어려운 강의 안내, 필요 없는 항목 숨기기. 위쪽에 진행 중·곧 시작하는 학교 신청 기간(휴·복학, 수강신청, 전과 등)과 시험 — 학교 홈페이지 학사일정에서
 - **강의실 표시** — 과목 페이지 목록에 출석/결석, 진도 막대(출석 기준 = 영상 길이의 90%), 남은 시간, 과제 제출·늦은 제출 표시
 - **캘린더** — 주간(시간표 + 내 비교과, 매주 회차 포함 + 요일별 과제·퀴즈·강의 마감)과 월간. 톡방으로만 공지된 일정 등은 직접 넣기(날짜·시각 / 날짜만 / "그 달 중"). 일정마다 "구글 캘린더에 추가", 전체를 .ics 파일로 내보내기(구글·삼성·아이폰 캘린더에서 가져오기)
-- **비교과** — 신청: 접수 중 프로그램을 일정 종류(날짜·시각 확정 / 매주 / 온라인 / 제출형 / 상담·개별 / 장기·기타)로 나누고, 회차마다 수업과 겹치는지 표시. 내 비교과: 졸업 인정 포인트와 남은 점수, 이번 학기 200점 칸(지난 학기 이월 포함)·다음 학기 이월 예상, 아직 안 낸 설문, 시작 대기·진행 중 일정. 800점을 넘으면 "내 비교과 점수"와 이번 학기 모은 점수만 크게
+- **비교과** — 신청: 접수 중 프로그램을 종류(특강·행사 / 온라인 / 과제 제출 / 프로젝트 / 상담·개별 / 장기 / 기타)로 나누고, 포인트와 회차마다 수업과 겹치는지 표시. 마감순·포인트순 정렬, 내 시간표와 안 겹치는 것만 보기. 내 비교과: 졸업 인정 포인트와 남은 점수, 이번 학기 200점 칸(지난 학기 이월 포함)·다음 학기 이월 예상, 아직 안 낸 설문, 시작 대기·진행 중 일정. 800점을 넘으면 "내 비교과 점수"와 이번 학기 모은 점수만 크게
 - **내 설정 동기화** — 숨긴 항목·과목 색·직접 넣은 일정은 같은 구글 계정으로 로그인한 크롬끼리 똑같이 보입니다(크롬 동기화 사용). 백업 파일로 저장·불러오기도 됩니다
-- **AI** — "오늘 뭐 해야 돼?" 같은 질문에 실제 일정 카드로 답 (AI 서버 연결 전에는 브라우저 안 기본 답변)
+- **AI** — 직접 쓴 질문("오늘 내 일정 제안해 줄래?")에 내 일정·마감·비교과를 근거로 답하고, 항목은 이름으로 짚어 줍니다(날짜·마감은 학교 정보 그대로). 자주 묻는 질문 버튼은 AI 없이 바로 답합니다. 질문할 때만 필요한 최소 정보를 보내고(보낼 내용 미리 보기), 서버는 저장하지 않습니다. 수업·과제·비교과와 관계없는 질문은 답하지 않습니다 (`docs/AI-SETUP.md`)
 - **처음 안내 · 설정** — 처음 열면 세 사이트 로그인 확인과 탭 소개. 아래 "연결 상태 · 설정"에서 백업, 내 데이터 모두 지우기
 
 ## 왜 만드나요
