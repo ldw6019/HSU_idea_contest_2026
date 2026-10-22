@@ -6,10 +6,11 @@
 // - 온라인출석부 위쪽의 개인정보 표는 읽지 않고, 진도 표(user_progress_table)만 읽는다.
 
 import { makeItem, SOURCE, TYPE, STATUS } from "../core/model.js";
-import { ParseError } from "../core/errors.js";
+import { ParseError, LoginRequiredError } from "../core/errors.js";
 import { runLimited } from "../core/limit.js";
 
 const BASE = "https://learn.hansung.ac.kr";
+const REQUEST_TIMEOUT_MS = 15000;
 
 // 시연 모드(10/21): 학교 대신 가짜 HTML을 주는 함수를 끼울 수 있게
 let demoHtml = null;
@@ -19,9 +20,12 @@ export function useDemo(fn) {
 
 async function getDoc(path) {
   if (demoHtml) return new DOMParser().parseFromString(demoHtml(BASE + path), "text/html");
-  const res = await fetch(BASE + path, { credentials: "include", cache: "no-store" });
+  // 10/23: 응답이 없으면 15초 뒤 포기, 로그인이 풀려 로그인 화면이 오면 "로그인 필요"로 (빈 목록으로 오해하지 않게)
+  const res = await fetch(BASE + path, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`e클래스 요청 실패 (${res.status})`);
-  return new DOMParser().parseFromString(await res.text(), "text/html");
+  const doc = new DOMParser().parseFromString(await res.text(), "text/html");
+  if (/\/login\//.test(new URL(res.url).pathname) || doc.querySelector('form[action*="/login/"] input[type="password"]')) throw new LoginRequiredError("e클래스");
+  return doc;
 }
 
 // 일부 제목은 한글이 자모 분리(NFD) 상태로 들어 있어서 NFC로 합쳐 둔다.
@@ -157,8 +161,9 @@ export function parseQuizDone(doc) {
   return [...table.querySelectorAll("tbody tr")].some((tr) => /종료|finished/i.test(text(tr.children[col])));
 }
 
-function videoStatus(v, prog, now) {
+function videoStatus(v, prog, now, unknown) {
   if (prog?.attended) return STATUS.DONE;
+  if (unknown) return STATUS.TODO; // 진도를 못 읽었으면 "결석"이라고 단정하지 않는다 (10/23)
   if (v.to && v.to < now) return STATUS.MISSED;
   return STATUS.TODO;
 }
@@ -175,6 +180,7 @@ export async function fetchCourseItems(course, now = new Date()) {
   const progress = progressDoc ? parseProgress(progressDoc) : new Map();
   const videos = parseVideos(viewDoc).map((v) => {
     const p = progress.get(norm(v.name));
+    const progressUnknown = progress.size === 0; // 온라인출석부를 못 읽음 (표가 없거나 요청 실패)
     const ratio = v.lengthSec && p ? Math.round((p.learnedSec / v.lengthSec) * 1000) / 10 : null;
     return makeItem({
       id: `eclass:video:${v.cmid}`,
@@ -184,10 +190,10 @@ export async function fetchCourseItems(course, now = new Date()) {
       course: course.name,
       start: v.from,
       due: v.to,
-      status: videoStatus(v, p, now),
+      status: videoStatus(v, p, now, progressUnknown),
       url: v.url,
       // courseId·cmid: 패널에서 누르면 강의실(과목 페이지)의 그 강의 위치로 보내기 위해
-      meta: { lengthSec: v.lengthSec, learnedSec: p?.learnedSec ?? null, percent: ratio, attended: !!p?.attended, courseId: course.id, cmid: v.cmid },
+      meta: { lengthSec: v.lengthSec, learnedSec: p?.learnedSec ?? null, percent: ratio, attended: !!p?.attended, progressUnknown, courseId: course.id, cmid: v.cmid },
     });
   });
 
@@ -237,5 +243,10 @@ export async function fetchEclass(mainDoc = document) {
   const items = [];
   const failed = [];
   results.forEach((r, i) => (r.ok ? items.push(...r.value) : failed.push({ course: courses[i].name, message: String(r.error?.message || r.error) })));
+  // 10/23: 한 과목도 못 읽었으면 "남은 것 없음"이 아니라 실패 → 캐시를 빈 목록으로 덮지 않고 예전 데이터를 보여 줌
+  if (failed.length === courses.length) {
+    const loginErr = results.find((r) => r.error?.name === "LoginRequiredError");
+    throw loginErr ? loginErr.error : new Error(`e클래스 과목을 하나도 읽지 못했어요 (${failed[0]?.message || "요청 실패"})`);
+  }
   return { courses, items, failed };
 }

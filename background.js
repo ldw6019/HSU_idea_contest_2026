@@ -90,7 +90,7 @@ async function fetchText({ url }) {
   const u = new URL(url);
   if (u.protocol !== "https:" || !ALLOWED_HOSTS.has(u.host)) throw new Error("허용되지 않은 주소");
   // 학교 홈페이지(학사일정)는 공개 화면이라 로그인 정보(쿠키)를 보내지 않는다 (10/20)
-  const res = await fetch(u.href, { credentials: PUBLIC_HOSTS.has(u.host) ? "omit" : "include", cache: "no-store" });
+  const res = await fetch(u.href, { credentials: PUBLIC_HOSTS.has(u.host) ? "omit" : "include", cache: "no-store", signal: AbortSignal.timeout(15000) }); // 10/23: 응답 없으면 15초 뒤 포기
   const buf = await res.arrayBuffer();
   const charset = /charset=([\w-]+)/i.exec(res.headers.get("content-type") || "")?.[1] || (u.host === "info.hansung.ac.kr" ? "euc-kr" : "utf-8");
   let text;

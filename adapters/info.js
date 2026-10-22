@@ -76,7 +76,7 @@ function looksLoggedOut(res, html) {
 
 /** 이번 주 시간표를 가져온다. 로그인이 안 돼 있으면 LoginRequiredError */
 export async function fetchTimetable() {
-  const pageRes = await fetch(TIMETABLE_PAGE, { credentials: "include", cache: "no-store" });
+  const pageRes = await fetch(TIMETABLE_PAGE, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(15000) }); // 10/23: 응답 없으면 15초 뒤 포기
   const html = await decode(pageRes);
   if (looksLoggedOut(pageRes, html)) throw new LoginRequiredError(SITE_NAME);
 
@@ -89,6 +89,7 @@ export async function fetchTimetable() {
     cache: "no-store",
     headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "X-Requested-With": "XMLHttpRequest" },
     body: new URLSearchParams({ as_hakbun: key }),
+    signal: AbortSignal.timeout(15000),
   });
   if (!dataRes.ok) throw new Error(`시간표 요청 실패 (${dataRes.status})`);
   const text = await decode(dataRes);

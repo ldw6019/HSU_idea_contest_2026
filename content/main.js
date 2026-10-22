@@ -99,6 +99,7 @@
   const LOGIN_URL = {
     종합정보시스템: "https://info.hansung.ac.kr/",
     "비교과 (스마트자기관리시스템)": "https://hsportal.hansung.ac.kr/",
+    e클래스: "https://learn.hansung.ac.kr/login/index.php",
   };
 
   // ---------- 날짜 도우미 ----------
@@ -173,7 +174,14 @@
   const tabBar = el("nav", { class: "tabs" });
   const body = el("div", { class: "body" });
   const content = el("div", { class: "content" });
-  panel.append(header, tabBar, body);
+  // 10/23: 내 설정(크롬 동기화) 저장이 실패하면 위쪽에 알림 (전에는 된 것처럼 보이다가 새로고침하면 사라졌음)
+  const saveWarnText = el("span");
+  const saveWarn = el("div", { class: "save-warn", hidden: "" }, [saveWarnText, el("button", { class: "close", text: "×", title: "알림 닫기", "aria-label": "알림 닫기", onclick: () => saveWarn.setAttribute("hidden", "") })]);
+  function showSaveWarn(msg) {
+    saveWarnText.textContent = msg;
+    saveWarn.removeAttribute("hidden");
+  }
+  panel.append(header, tabBar, saveWarn, body);
   root.append(launcher, panel);
 
   let current = "week";
@@ -264,10 +272,18 @@
     const remove = [...pending.remove];
     pending.set = {};
     pending.remove = new Set();
+    const fail = (e) => {
+      if (isDeadContext(e)) return onDeadContext(); // 확장이 업데이트돼 연결이 끊긴 탭 → "페이지 새로고침" 안내
+      console.warn("[HSU Plus] 설정 저장 실패", e);
+      const full = /QUOTA|MAX_ITEMS/i.test(String(e?.message || e));
+      showSaveWarn(full ? "저장 공간(크롬 동기화)이 가득 차서 방금 바꾼 내용을 저장하지 못했어요. 지난 직접 일정을 지우거나, 백업 저장 후 '내 데이터 모두 지우기'를 해 주세요." : "방금 바꾼 내용을 저장하지 못했어요. 페이지를 새로고침한 뒤 다시 해 주세요.");
+    };
     try {
-      if (Object.keys(set).length) chrome.storage.sync.set(set).catch((e) => console.warn("[HSU Plus] 설정 저장 실패", e));
-      if (remove.length) chrome.storage.sync.remove(remove).catch(() => {});
-    } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
+      if (Object.keys(set).length) chrome.storage.sync.set(set).catch(fail);
+      if (remove.length) chrome.storage.sync.remove(remove).catch(fail);
+    } catch (e) {
+      fail(e);
+    }
   }
   /** 내 설정 묶음(ns) 전체 읽기 → { id: 값 }. legacyKey: 예전 버전이 이 브라우저에만 저장하던 키 (한 번 옮기고 지움) */
   async function userMap(ns, legacyKey) {
@@ -409,13 +425,33 @@
   // { t 제목, d "YYYY-MM-DD"|null, m "YYYY-MM"|null(대략: 그 달 중), s "HH:MM"|null, e "HH:MM"|null, p 장소, n 메모, g 연결된 비교과 번호, at 만든 시각 }
   // 톡방으로만 공지되는 비교과, 학교 밖 개인 일정 등. 학교에서 가져온 일정보다 우선해서 보여준다.
   let events = {};
+  // 10/23: 저장된 일정 하나하나를 입력 화면과 같은 규칙으로 검사 (이상한 백업·손상된 값이 화면 전체를 깨뜨리지 않게)
+  const RE_D = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/, RE_M = /^\d{4}-(0[1-9]|1[0-2])$/, RE_T = /^([01]\d|2[0-3]):[0-5]\d$/;
+  const str = (x, n) => (typeof x === "string" && x.trim() ? x.trim().slice(0, n) : null);
+  function cleanEvent(v) {
+    if (!v || typeof v !== "object") return null;
+    const t = str(v.t, 60);
+    if (!t) return null;
+    const base = { t, p: str(v.p, 40), n: str(v.n, 120), at: Number.isFinite(v.at) ? v.at : Date.now() };
+    if (Array.isArray(v.w)) {
+      const w = [...new Set(v.w.filter((d) => Number.isInteger(d) && d >= 0 && d <= 6))].sort();
+      if (!w.length || !RE_T.test(v.s || "") || !RE_T.test(v.e || "") || v.e <= v.s) return null;
+      return { ...base, w, s: v.s, e: v.e, from: RE_D.test(v.from || "") ? v.from : null, until: RE_D.test(v.until || "") ? v.until : null };
+    }
+    const d = RE_D.test(v.d || "") ? v.d : null;
+    const m = !d && RE_M.test(v.m || "") ? v.m : null;
+    if (!d && !m) return null;
+    return { ...base, d, m, s: d && RE_T.test(v.s || "") ? v.s : null, e: d && RE_T.test(v.s || "") && RE_T.test(v.e || "") ? v.e : null, g: /^\d{1,12}$/.test(String(v.g ?? "")) ? String(v.g) : null };
+  }
+  const cleanEvents = (map) => Object.fromEntries(Object.entries(map || {}).map(([id, v]) => [id, cleanEvent(v)]).filter(([, v]) => v));
   userMap("ev").then((v) => {
-    events = v;
+    events = cleanEvents(v);
     rerender();
   });
   onUserChange("ev", (id, v) => {
-    if (v == null) delete events[id];
-    else events[id] = v;
+    const ok = v == null ? null : cleanEvent(v);
+    if (!ok) delete events[id];
+    else events[id] = ok;
   });
   const newId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   function saveEvent(id, ev) {
@@ -984,7 +1020,8 @@
     renderCalendar();
   }
   async function exportBackup() {
-    const [hide, color, ev] = await Promise.all([userMap("hide"), userMap("color"), userMap("ev")]);
+    // 10/23: 화면이 가진 값으로 저장 (읽기 실패 시 빈 백업이 "저장했어요"로 나가지 않게)
+    const [hide, color, ev] = [{ ...hidden }, { ...(courseColors || {}) }, { ...events }];
     download(`hsuplus-backup-${ymd(new Date())}.json`, JSON.stringify({ app: "HSU Plus", v: 1, at: new Date().toISOString(), hide, color, ev }, null, 1), "application/json");
     calNote = `백업 파일을 저장했어요 (직접 넣은 일정 ${Object.keys(ev).length}개, 숨긴 항목 ${Object.keys(hide).length}개, 과목 색). 개인 일정이 들어 있으니 다른 사람에게 보내지 마세요.`;
     settingsNote.textContent = calNote;
@@ -997,12 +1034,18 @@
         const b = JSON.parse(await input.files[0].text());
         if (!/^HSU Plus$/i.test(b?.app || "")) throw new Error("HSU Plus 백업 파일이 아니에요."); // 예전 백업("HSU Plus")도 받음
         const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
-        let n = 0;
-        for (const [id, v] of Object.entries(obj(b.ev))) if (v && typeof v.t === "string" && !events[id]) saveEvent(id, { ...v, t: v.t.slice(0, 60) }), n++;
+        // 10/23: 항목마다 검사해서 형식이 틀린 것은 건너뜀, 개수도 제한 (크롬 동기화 용량)
+        const okId = (id) => typeof id === "string" && id.length <= 120;
+        let n = 0, skipped = 0;
+        for (const [id, v] of Object.entries(obj(b.ev)).slice(0, 200)) {
+          const ev = okId(id) && !events[id] ? cleanEvent(v) : null;
+          if (ev) saveEvent(id, ev), n++;
+          else if (!events[id]) skipped++;
+        }
         let h = 0;
-        for (const [id, t] of Object.entries(obj(b.hide))) if (typeof t === "number" && !hidden[id]) (hidden[id] = t), userPut("hide", id, t), h++;
-        for (const [k, slot] of Object.entries(obj(b.color))) if (Number.isInteger(slot) && courseColors && courseColors[k] == null) (courseColors[k] = slot), userPut("color", k, slot);
-        calNote = `가져왔어요: 일정 ${n}개, 숨긴 항목 ${h}개 (이미 있는 것은 그대로 두었어요).`;
+        for (const [id, t] of Object.entries(obj(b.hide)).slice(0, 300)) if (okId(id) && Number.isFinite(t) && !hidden[id]) (hidden[id] = t), userPut("hide", id, t), h++;
+        for (const [k, slot] of Object.entries(obj(b.color)).slice(0, 40)) if (okId(k) && Number.isInteger(slot) && slot >= 0 && slot < COLOR_SLOTS && courseColors && courseColors[k] == null) (courseColors[k] = slot), userPut("color", k, slot);
+        calNote = `가져왔어요: 일정 ${n}개, 숨긴 항목 ${h}개 (이미 있는 것은 그대로 두었어요)${skipped ? `. 형식이 맞지 않는 일정 ${skipped}개는 건너뛰었어요` : ""}.`;
       } catch (e) {
         calNote = `가져오지 못했어요: ${e.message}`;
       }
@@ -1509,18 +1552,21 @@
     let sec = 0;
     let unknown = 0;
     for (const it of items) {
-      if (!it.meta?.lengthSec) {
+      if (!it.meta?.lengthSec || it.meta.progressUnknown) {
         unknown++;
         continue;
       }
       sec += Math.max(0, ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0));
     }
     const doomed = items.filter((it) => absenceCertain(it)).length;
+    // 10/23: 하나도 계산할 수 없으면 "0분"이라고 하지 않는다
+    if (unknown === items.length)
+      return el("div", { class: "sum-line" }, [icon("clock"), el("span", { text: `강의 ${items.length}개` }), el("span", { class: "muted", text: " · 진도를 읽지 못해 남은 시청 시간은 학교 화면에서 확인해 주세요" })]);
     const parts = [`출석까지 남은 시청 ${mmss(sec)}`, `${items.length}개`];
     return el("div", { class: "sum-line", title: "강의마다 출석 기준(영상 길이의 90%)까지 남은 시간을 더했어요." }, [
       icon("clock"),
       el("span", { text: parts.join(" · ") }),
-      unknown ? el("span", { class: "muted", text: ` (길이 모르는 강의 ${unknown}개 제외)` }) : null,
+      unknown ? el("span", { class: "muted", text: ` (길이·진도를 모르는 강의 ${unknown}개 제외)` }) : null,
       doomed ? el("span", { class: "warn", text: ` · 출석 어려움 ${doomed}` }) : null,
     ]);
   }
@@ -1625,11 +1671,14 @@
         bodyParts.push(hiddenSection(progAll.filter((x) => isHidden(x.id)), (x) => (x.kind === "event" ? x.ev.t : x.p.title)));
       }
     } else if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
-    else if (!eclass.ok) bodyParts = [failCard(eclass.error?.message, () => loadEclass({ force: true }))];
+    else if (!eclass.ok) bodyParts = [eclass.error?.kind === "login" ? loginCard("e클래스", () => location.reload()) : failCard(eclass.error?.message, () => loadEclass({ force: true }))];
     else {
       const items = lists[weekKind];
       bodyParts = [];
       if (eclass.error) bodyParts.push(el("p", { class: "stale", text: "e클래스를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
+      // 10/23: 일부 과목만 실패하면 그 과목 항목이 빠진 채로 보이므로 알려 준다
+      const failedCourses = eclass.data?.failed || [];
+      if (failedCourses.length) bodyParts.push(el("p", { class: "stale", text: `${failedCourses.length}개 과목을 읽지 못해 빠져 있어요: ${failedCourses.map((f) => f.course).join(", ")} · 새로고침해 보세요`, title: failedCourses.map((f) => `${f.course}: ${f.message}`).join("\n") }));
       if (eclass.data.noCourses) bodyParts.push(el("p", { class: "stale info", text: "e클래스에 이번 학기 교과 과목이 아직 없어요 (방학·학기 초). 비교과·학사일정·캘린더는 그대로 볼 수 있어요." }));
       if (weekKind === "video" && items.length) bodyParts.push(watchSummary(items));
       bodyParts.push(items.length ? rows(grouped(weekKind, items, kind.label)) : donePlaceholder(kind.empty));
@@ -1684,7 +1733,7 @@
       el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? el("span", { class: "siren", text: "🚨" }) : icon("warn"), el("span", { text: status })]),
     ]);
 
-  const pctText = (it) => (it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
+  const pctText = (it) => (it.type === "video" && it.meta?.progressUnknown ? "진도 확인 불가" : it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
 
   // 강의는 강의 화면 대신 강의실(과목 페이지)의 그 강의 위치로 보낸다 (예전 캐시엔 courseId가 없으면 원래 주소)
   const openUrl = (it) =>
@@ -1879,6 +1928,18 @@
     rerender();
   }
 
+  // 10/23: 같은 불러오기가 이미 진행 중이면 새로 보내지 않고 그 결과를 기다린다
+  //  (패널을 닫았다 다시 열거나 새로고침을 연달아 누를 때 학교로 같은 요청이 겹쳐 나가지 않게)
+  function single(fn) {
+    let running = null;
+    return (opts) => running || (running = Promise.resolve(fn(opts)).finally(() => (running = null)));
+  }
+  loadWeek = single(loadWeek);
+  loadAcademic = single(loadAcademic);
+  loadEclass = single(loadEclass);
+  loadPrograms = single(loadPrograms);
+  loadMine = single(loadMine);
+
   function rerender() {
     if (deadContext) return renderDeadNotice();
     renderSetOpts();
@@ -1951,7 +2012,7 @@
   //  남은 시간만큼 실제로 재생해야 채워지므로(건너뛰기 불가) 남은 필요 시간과 마감까지 남은 시간을 그대로 비교한다.
   const ATTEND_RATIO = 0.9;
   function absenceCertain(it, now = Date.now()) {
-    if (it.type !== "video" || !it.due || !it.meta?.lengthSec) return false;
+    if (it.type !== "video" || !it.due || !it.meta?.lengthSec || it.meta.progressUnknown) return false; // 진도를 못 읽었으면 판단하지 않음
     const needSec = ATTEND_RATIO * it.meta.lengthSec - (it.meta.learnedSec || 0);
     const leftSec = (new Date(it.due).getTime() - now) / 1000;
     return needSec > 0 && needSec > leftSec;
@@ -2619,7 +2680,7 @@
   async function ask(question, presetId) {
     const { ai } = await mods;
     const q = ai.sanitizeQuestion(question);
-    if (!q) return;
+    if (!q || aiBusy) return; // 10/23: 답을 기다리는 동안 새 질문이 끼어들면 순서가 꼬여 "생각하는 중…"이 남았음
     const last = chat[chat.length - 2];
     if (last && last.who === "me" && last.text === q) return; // 같은 질문 연속은 무시
     chat.push({ who: "me", text: q });
@@ -2634,19 +2695,24 @@
       return renderAI({ scroll: true });
     }
     // 추천 버튼(브라우저 안 기본 답변)은 바로 계산되지만 1초쯤 "생각하는 중…" 뒤에 보여 줌 (10/19 사용자: 즉시 뜨면 어색함)
+    // "생각하는 중…"은 그 말풍선 자체를 찾아 지운다 (마지막 것을 지우면 다른 답을 지울 수 있음)
+    const dropPending = (m) => {
+      const i = chat.indexOf(m);
+      if (i >= 0) chat.splice(i, 1);
+    };
     if (presetId) {
-      if (aiBusy) return chat.pop();
       aiBusy = true;
-      chat.push({ who: "bot", text: "생각하는 중…", pending: true });
+      const wait = { who: "bot", text: "생각하는 중…", pending: true };
+      chat.push(wait);
       renderAI({ scroll: true });
       await new Promise((r) => setTimeout(r, 900));
       aiBusy = false;
-      chat.pop();
+      dropPending(wait);
     }
     if (!presetId && AI_ENDPOINT) {
-      if (aiBusy) return chat.pop();
       aiBusy = true;
-      chat.push({ who: "bot", text: "생각하는 중…", pending: true });
+      const wait = { who: "bot", text: "생각하는 중…", pending: true };
+      chat.push(wait);
       renderAI({ scroll: true });
       let r;
       try {
@@ -2656,7 +2722,7 @@
         r = { ok: false };
       }
       aiBusy = false;
-      chat.pop(); // "생각하는 중…"
+      dropPending(wait);
       if (r?.ok) {
         // 10/20 "문장 안에 이름" 모양: 문장 속 {t1}을 진짜 이름·D-day 칩으로 바꿔 그림 (카드 목록은 안 띄움)
         const refs = {};
@@ -2793,6 +2859,7 @@
     const counter = el("span", { class: "ai-count", text: "0/200" });
     input.addEventListener("input", () => (counter.textContent = `${input.value.length}/200`));
     const send = () => {
+      if (aiBusy) return; // 10/23: 답을 기다리는 중엔 보내지 않고 쓴 글은 그대로 둔다
       const v = input.value;
       input.value = "";
       ask(v);
@@ -2864,6 +2931,13 @@
     },
   });
   async function wipeAll() {
+    if (DEMO) {
+      // 10/23: 시연 모드에서는 진짜 내 설정을 지우지 않는다 (시연 모드 = 내 설정을 건드리지 않음)
+      settingsNote.textContent = "시연 모드에서는 지울 수 없어요. 시연 모드를 끈 뒤에 지워 주세요.";
+      wipeArmed = false;
+      wipeBtn.textContent = "내 데이터 모두 지우기";
+      return;
+    }
     try {
       await send({ type: "clearCache" });
       const local = await chrome.storage.local.get(null);
@@ -2877,7 +2951,17 @@
       details = {};
       classified.clear();
       week = eclass = programs = mine = academic = null;
-      settingsNote.textContent = "지웠어요. 패널을 다시 열면 학교 사이트에서 새로 불러와요.";
+      clearTimeout(flushTimer);
+      flushTimer = null;
+      pending.set = {};
+      pending.remove = new Set();
+      settingsNote.textContent = "지웠어요. 학교 사이트에서 새로 불러오고 있어요.";
+      // 10/23: 지운 뒤 "불러오는 중"에서 멈추지 않게 바로 다시 불러온다
+      loadWeek({ force: true });
+      loadEclass({ force: true });
+      loadPrograms({ force: true });
+      loadMine({ force: true });
+      if (acadOn()) loadAcademic({ force: true });
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
       settingsNote.textContent = `지우지 못했어요: ${err.message}`;

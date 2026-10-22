@@ -858,3 +858,9 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 
 /* ---------- 머리줄 줄바꿈 방지 ---------- */
 .brand strong, .wide-toggle { white-space: nowrap; }
+
+/* ---------- 저장 실패 알림 (10/23) ---------- */
+.save-warn { display: flex; align-items: flex-start; gap: 8px; margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: var(--ot-warn-bg); color: #8a5a00; font-size: 12px; line-height: 1.45; }
+.save-warn[hidden] { display: none; }
+.save-warn span { flex: 1; }
+.save-warn .close { flex: none; border: 0; background: none; color: inherit; font-size: 16px; line-height: 1; cursor: pointer; padding: 0 2px; }

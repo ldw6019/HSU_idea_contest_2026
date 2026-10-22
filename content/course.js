@@ -179,11 +179,18 @@
 
   // ---------- 강의 영상 ----------
   // [ 학습시간 / 출석 기준 (비율%) ] [출석] 또는 [N분 N초 필요] [N일 … 남음]
-  function decorateVideo(li, v, p, now) {
+  function decorateVideo(li, v, p, now, progressUnknown = false) {
     const required = v.lengthSec ? Math.floor(v.lengthSec * ATTEND_RATIO) : null;
     const learned = p?.learnedSec || 0;
     const from = v.from, to = v.to;
     const open = (!from || from <= now) && (!to || to >= now);
+    // 10/23: 온라인출석부를 못 읽었으면 "결석"이라고 단정하지 않고 "확인 불가"
+    if (progressUnknown) {
+      placePill(li, tag("hsup-wait", from && from > now ? "열리기 전" : "진도 확인 불가"));
+      li.querySelector(".hsup-tag")?.classList.add("hsup-pill");
+      li.querySelector(".hsup-tag")?.setAttribute("title", "온라인출석부에서 이 강의의 학습 시간을 읽지 못했어요. 학교 화면에서 확인해 주세요.");
+      return;
+    }
     const state = p?.attended ? "ok" : to && to < now ? "bad" : from && from > now ? "wait" : "live";
     const color = state === "ok" ? "hsup-ok" : state === "bad" ? "hsup-gray" : state === "wait" ? "hsup-gray" : to ? `hsup-r${tier(to)}` : "hsup-r5";
 
@@ -230,7 +237,7 @@
 
   // ---------- 불러와서 붙이기 ----------
   const getDoc = async (path) => {
-    const res = await fetch(path, { credentials: "include", cache: "no-store" });
+    const res = await fetch(path, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`요청 실패 (${res.status})`);
     return new DOMParser().parseFromString(await res.text(), "text/html");
   };
@@ -269,7 +276,7 @@
       const v = videos.get(li.id.replace("module-", ""));
       if (!v || li.dataset.hsup) continue;
       li.dataset.hsup = "1";
-      decorateVideo(li, v, progress.get(ec.norm(v.name)), now);
+      decorateVideo(li, v, progress.get(ec.norm(v.name)), now, progress.size === 0);
     }
 
     // 과제: 목록 표로 제출 여부·마감, 낸 과제만 과제 화면에서 제출 시각
