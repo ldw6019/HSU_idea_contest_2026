@@ -82,7 +82,7 @@ const icsUtc = (d) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""
 
 /** 일정들 → .ics 글. uid가 같으면 다시 가져와도 같은 일정으로 덮어쓴다 */
 export function buildIcs(events, now = new Date()) {
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HSU PLUS//KO", "CALSCALE:GREGORIAN", "X-WR-CALNAME:HSU PLUS", "X-WR-TIMEZONE:Asia/Seoul"];
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//HSU Plus//KO", "CALSCALE:GREGORIAN", "X-WR-CALNAME:HSU Plus", "X-WR-TIMEZONE:Asia/Seoul"];
   // 한국은 서머타임이 없어 고정 +09:00 한 줄이면 된다
   lines.push("BEGIN:VTIMEZONE", "TZID:Asia/Seoul", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0900", "TZOFFSETTO:+0900", "TZNAME:KST", "END:STANDARD", "END:VTIMEZONE");
   for (const ev of events) {

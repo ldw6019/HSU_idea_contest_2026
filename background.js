@@ -1,4 +1,4 @@
-// HSU PLUS service worker
+// HSU Plus service worker
 // 화면(content script)은 다른 사이트에 직접 요청할 수 없어서,
 // 비교과 사이트·종합정보시스템 요청은 여기서 대신 보낸다.
 
@@ -37,10 +37,12 @@ const PASSWORD_INPUT = /<input[^>]*type\s*=\s*["']?password/i;
 //  1) 요청한 주소에서 다른 주소(로그인 화면 등)로 넘겨지지 않았다
 //  2) 비밀번호 입력칸이 없다
 //  3) 로그인했을 때만 보이는 표시가 있다
+const CHECK_TIMEOUT_MS = 8000;
 async function checkSite(key) {
   const site = SITES[key];
   try {
-    const res = await fetch(site.url, { credentials: "include", cache: "no-store" });
+    // 학교 사이트가 응답하지 않으면 8초 뒤 포기 → 화면은 "요청 실패"와 "다시 확인"을 보여 줌 (10/23)
+    const res = await fetch(site.url, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(CHECK_TIMEOUT_MS) });
     const html = new TextDecoder(site.encoding).decode(await res.arrayBuffer());
 
     const checks = {
@@ -62,7 +64,8 @@ async function checkSite(key) {
       loginUrl: site.loginUrl,
     };
   } catch (err) {
-    return { key, name: site.name, loggedIn: false, error: String(err), loginUrl: site.loginUrl };
+    const timedOut = err?.name === "TimeoutError";
+    return { key, name: site.name, loggedIn: false, error: timedOut ? "timeout" : String(err), timedOut, loginUrl: site.loginUrl };
   }
 }
 
@@ -74,7 +77,7 @@ async function getTimetable({ force = false } = {}) {
   } catch (err) {
     // 로그인 안 된 건 정상 상황(패널이 "로그인 필요" 안내를 띄움) → 경고로 남기지 않는다.
     // 경고는 크롬 확장 관리 화면의 "오류" 목록에 쌓이므로 진짜 실패만 남긴다.
-    if (err.name !== "LoginRequiredError") console.warn("[HSU PLUS] 시간표 불러오기 실패:", err.name, err.message);
+    if (err.name !== "LoginRequiredError") console.warn("[HSU Plus] 시간표 불러오기 실패:", err.name, err.message);
     return { ok: false, items: [], fetchedAt: null, error: toPlainError(err) };
   }
 }

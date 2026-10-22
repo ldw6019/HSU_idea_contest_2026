@@ -57,27 +57,29 @@ e클래스 화면 안에 보여주는 크롬 확장 프로그램 프로토타입
 4. [e클래스](https://learn.hansung.ac.kr)에 로그인 → 메인 화면 오른쪽 가장자리의 **+** 버튼 클릭
 5. 처음 안내에 따라 비교과(스마트자기관리시스템)·종합정보시스템에도 로그인 → "다시 확인"
 
-코드를 고친 뒤에는 `chrome://extensions`에서 HSU PLUS의 새로고침(↻) 버튼 → e클래스 새로고침.
+코드를 고친 뒤에는 `chrome://extensions`에서 HSU Plus의 새로고침(↻) 버튼 → e클래스 새로고침.
 
 > 학교 실습실 같은 공용 PC에서 크롬에 구글 계정으로 로그인했다면, 다 쓰고 나서 꼭 로그아웃하세요. 로그인하지 않은 크롬에서는 직접 넣은 일정 등이 그 브라우저에만 남습니다.
 
 ## 구조
 ```
 manifest.json      확장 설정·권한
-background.js      service worker: 다른 사이트 요청, 캐시, AI 서버 호출
+background.js      service worker: 다른 사이트 요청, 캐시, 연결 확인, AI 서버 호출
 content/           e클래스 화면 (패널, 강의실 표시)
-adapters/          사이트별 데이터 읽기 (eclass / hsportal / info)
-core/              공통 데이터 형식, 캐시, 비교과 일정 분류(규칙), 캘린더(.ics·구글 링크·겹침), AI 탭 답변·보낼 정보 정리
-lib/               외부 라이브러리 자리 (지금은 비어 있음)
-worker/            Cloudflare Worker: AI 서버 (질문 답변, 안내문 분류·요약)
-tools/             README 스크린샷 만들기 (가짜 데이터)
-test/              규칙 분류 정답표(공개 안내문 26건)와 시험: node test/classify.test.mjs, node test/calendar.test.mjs
-docs/              계획, 마일스톤, 개발 일지, 사이트 분석 노트, 화면 예시(images/)
+adapters/          사이트별 데이터 읽기 (eclass / hsportal / info / hansung 학사일정)
+core/              공통 데이터 형식, 캐시, 비교과 일정 분류(규칙), 캘린더(.ics·구글 링크·겹침), 포인트 계산, AI 탭(기본 답변·보낼 정보 정리), 시연 모드 가짜 데이터
+worker/            Cloudflare Worker: AI 서버 (질문 답변, 안내문 분류) + 시험(test/)·모델 비교 시험(eval/)
+tools/             시연 모드 자동 화면 점검 (node tools/screenshots.mjs)
+test/              규칙 분류 정답표(공개 안내문 26건), 캘린더·포인트·조사·범위 밖 질문 시험 (node test/○○.test.mjs)
+docs/              계획, 마일스톤, 개발 일지, 사이트 분석 노트, 안내서, 화면 예시(images/)
 ```
 
 ## 문서
 - [기능 목록과 구현 계획](docs/PLAN.md)
-- [초기 구상 마일스톤과 진행 방법](docs/MILESTONES.md)
+- [마일스톤과 진행 상황](docs/MILESTONES.md)
 - [개발 일지](docs/DEVLOG.md)
 - [사이트 분석 노트](docs/SITE-NOTES.md)
+- [AI 서버 연결 안내](docs/AI-SETUP.md)
+- [시연 모드와 README 그림 찍기](docs/DEMO.md)
+- [사용 테스트 안내 (친구용)](docs/TESTING.md)
 

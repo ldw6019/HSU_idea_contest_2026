@@ -1,4 +1,4 @@
-// HSU PLUS content script (e클래스 화면 담당). 팀명은 ON-Track, 작품명은 HSU PLUS
+// HSU Plus content script (e클래스 화면 담당). 팀명은 ON-Track, 작품명은 HSU Plus
 // e클래스 메인 화면에 패널을 띄우고, 다른 사이트 데이터는 service worker(background.js)에 요청한다.
 // 데이터를 가져오는 코드는 adapters/에, 여기는 "그리기"만 담당한다.
 
@@ -265,7 +265,7 @@
     pending.set = {};
     pending.remove = new Set();
     try {
-      if (Object.keys(set).length) chrome.storage.sync.set(set).catch((e) => console.warn("[HSU PLUS] 설정 저장 실패", e));
+      if (Object.keys(set).length) chrome.storage.sync.set(set).catch((e) => console.warn("[HSU Plus] 설정 저장 실패", e));
       if (remove.length) chrome.storage.sync.remove(remove).catch(() => {});
     } catch {} // 확장 연결이 끊긴 탭이면 저장만 건너뜀
   }
@@ -679,7 +679,7 @@
       academic = { ok: true, data: r.data, fetchedAt: r.fetchedAt };
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
-      console.warn("[HSU PLUS] 학사일정 불러오기 실패:", err);
+      console.warn("[HSU Plus] 학사일정 불러오기 실패:", err);
       academic = { ok: false, error: plainErr(err) };
     }
     rerender();
@@ -985,7 +985,7 @@
   }
   async function exportBackup() {
     const [hide, color, ev] = await Promise.all([userMap("hide"), userMap("color"), userMap("ev")]);
-    download(`hsuplus-backup-${ymd(new Date())}.json`, JSON.stringify({ app: "HSU PLUS", v: 1, at: new Date().toISOString(), hide, color, ev }, null, 1), "application/json");
+    download(`hsuplus-backup-${ymd(new Date())}.json`, JSON.stringify({ app: "HSU Plus", v: 1, at: new Date().toISOString(), hide, color, ev }, null, 1), "application/json");
     calNote = `백업 파일을 저장했어요 (직접 넣은 일정 ${Object.keys(ev).length}개, 숨긴 항목 ${Object.keys(hide).length}개, 과목 색). 개인 일정이 들어 있으니 다른 사람에게 보내지 마세요.`;
     settingsNote.textContent = calNote;
     renderCalendar();
@@ -995,7 +995,7 @@
     input.addEventListener("change", async () => {
       try {
         const b = JSON.parse(await input.files[0].text());
-        if (b?.app !== "HSU PLUS") throw new Error("HSU PLUS 백업 파일이 아니에요.");
+        if (!/^HSU Plus$/i.test(b?.app || "")) throw new Error("HSU Plus 백업 파일이 아니에요."); // 예전 백업("HSU Plus")도 받음
         const obj = (x) => (x && typeof x === "object" && !Array.isArray(x) ? x : {});
         let n = 0;
         for (const [id, v] of Object.entries(obj(b.ev))) if (v && typeof v.t === "string" && !events[id]) saveEvent(id, { ...v, t: v.t.slice(0, 60) }), n++;
@@ -1826,10 +1826,10 @@
       const r = await cache.getOrFetch("eclass", cache.TTL.ECLASS, () => ad.fetchEclass(document), { force });
       eclass = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       logItems("e클래스 과제·영상", r.data.items);
-      if (r.data.failed?.length) console.warn("[HSU PLUS] 일부 과목을 읽지 못함", r.data.failed);
+      if (r.data.failed?.length) console.warn("[HSU Plus] 일부 과목을 읽지 못함", r.data.failed);
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
-      console.warn("[HSU PLUS] e클래스 불러오기 실패:", err);
+      console.warn("[HSU Plus] e클래스 불러오기 실패:", err);
       eclass = { ok: false, error: plainErr(err) };
     }
     eclassLoading = false;
@@ -1849,7 +1849,7 @@
       ensureDetails(r.data.map((it) => it.meta?.programId), { force });
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
-      console.warn("[HSU PLUS] 비교과 불러오기 실패:", err);
+      console.warn("[HSU Plus] 비교과 불러오기 실패:", err);
       programs = { ok: false, error: plainErr(err) };
     }
     programsLoading = false;
@@ -1872,7 +1872,7 @@
       ensureDetails(r.data.programs.map((p) => p.id)); // 매주 회차 판단용 안내문
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
-      if (err?.name !== "LoginRequiredError") console.warn("[HSU PLUS] 내 비교과 불러오기 실패:", err);
+      if (err?.name !== "LoginRequiredError") console.warn("[HSU Plus] 내 비교과 불러오기 실패:", err);
       mine = { ok: false, error: plainErr(err) };
     }
     mineLoading = false;
@@ -1890,7 +1890,7 @@
 
   // 공통 형식으로 잘 바뀌었는지 콘솔에서 확인 (M2 완료 기준)
   function logItems(label, items) {
-    console.log(`[HSU PLUS] ${label}: ${items.length}건`);
+    console.log(`[HSU Plus] ${label}: ${items.length}건`);
     console.table(items.map((it) => ({ 종류: it.type, 과목: it.course, 제목: it.title, 마감: it.due, 상태: it.status, ...(it.meta?.percent != null ? { 수강률: it.meta.percent + "%" } : {}), ...(it.meta?.point != null ? { 포인트: it.meta.point } : {}) })));
   }
 
@@ -2270,7 +2270,7 @@
       })
       .catch((err) => {
         if (isDeadContext(err)) return onDeadContext();
-        console.warn("[HSU PLUS] 비교과 상세 불러오기 실패:", err);
+        console.warn("[HSU Plus] 비교과 상세 불러오기 실패:", err);
         detailProgress = null;
         rerender();
       });
@@ -2930,7 +2930,7 @@
       conn = { eclass: eclassOk, sites: results.map((r) => ({ name: r.name, loggedIn: r.loggedIn, loginUrl: r.loginUrl })) };
       if (welcomeOpen && current === "week") renderWeek();
       for (const r of results) {
-        const detail = r.loggedIn ? "연결됨" : r.error ? "요청 실패" : "로그인 필요";
+        const detail = r.loggedIn ? "연결됨" : r.timedOut ? "응답 없음 (잠시 뒤 다시 확인)" : r.error ? "요청 실패" : "로그인 필요";
         rows.push(statusRow(r.name, r.loggedIn, detail, r.loginUrl));
       }
       // 판정 근거를 표로 출력 (모두 true여야 "연결됨")

@@ -1,4 +1,4 @@
-// HSU PLUS AI 서버 (Cloudflare Worker)
+// HSU Plus AI 서버 (Cloudflare Worker)
 //
 //  POST /v1/ask            AI 탭 질문 → { intent, picks: [{id, reason}], message }
 //  POST /v1/classify       비교과 안내문 → 분류·일정·요약 (같은 안내문은 한 번만 처리하고 모두가 같이 씀)

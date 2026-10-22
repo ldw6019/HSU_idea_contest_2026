@@ -1,4 +1,4 @@
-# HSU PLUS AI 서버 설정 예시. 복사해서 wrangler.toml로 쓰고, 비밀값은 여기 적지 않는다.
+# HSU Plus AI 서버 설정 예시. 복사해서 wrangler.toml로 쓰고, 비밀값은 여기 적지 않는다.
 #   키 등록(본인이 직접): npx wrangler secret put ANTHROPIC_API_KEY   (Gemini면 GEMINI_API_KEY)
 #   저장소 만들기:        npx wrangler d1 create hsuplus  → 아래 database_id 채우기
 #                        npx wrangler d1 execute hsuplus --remote --file=worker/schema.sql

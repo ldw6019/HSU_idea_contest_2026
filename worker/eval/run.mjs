@@ -49,7 +49,7 @@ for (const name of presets) {
   for (const c of CASES) {
     const t0 = Date.now();
     try {
-      const r = await callModel(env, { system: ASK_SYSTEM, user: `학생 정보(JSON):\n${JSON.stringify(CONTEXT)}\n\n질문: ${c.q}`, tool: ASK_TOOL, maxTokens: 400 });
+      const r = await callModel(env, { system: ASK_SYSTEM, user: `학생 정보(JSON):\n${JSON.stringify(CONTEXT)}\n\n질문: ${c.q}`, tool: ASK_TOOL, maxTokens: 600 }); // 서버와 같게 (ASK_MAX_TOKENS)
       const dt = Date.now() - t0;
       ms += dt;
       done++;

@@ -1,4 +1,4 @@
-/* HSU PLUS 패널 스타일 (Shadow DOM 안에서만 적용됨)
+/* HSU Plus 패널 스타일 (Shadow DOM 안에서만 적용됨)
    디자인은 M5에서 다듬는다. 색·글꼴·간격은 아래 변수만 바꾸면 전체에 반영된다. */
 :host {
   all: initial;

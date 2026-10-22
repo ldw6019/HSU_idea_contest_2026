@@ -1,4 +1,4 @@
--- HSU PLUS Worker 저장소 (Cloudflare D1)
+-- HSU Plus Worker 저장소 (Cloudflare D1)
 -- 적용: npx wrangler d1 execute hsuplus --file=worker/schema.sql
 CREATE TABLE IF NOT EXISTS counters (
   k   TEXT PRIMARY KEY,   -- 예: ask:2026-10-14:<설치ID>, cost:2026-10-14

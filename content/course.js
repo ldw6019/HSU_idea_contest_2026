@@ -1,4 +1,4 @@
-// HSU PLUS — 과목 페이지(강의실, /course/view.php) 꾸미기
+// HSU Plus — 과목 페이지(강의실, /course/view.php) 꾸미기
 // e클래스 기본 화면은 강의를 다 들었는지, 과제를 냈는지 하나씩 눌러 봐야 안다.
 // 그래서 강의실 목록에 바로 보이게 덧붙인다 (기존 익텐 hsu-ecx의 배치를 따르고, 색 입히는 방식은 우리 식으로:
 // 빈 칸도 상태 색으로 옅게 + 듣는 중인 강의는 흐르는 줄무늬).
@@ -319,7 +319,7 @@
   Promise.race([
     decorate().catch((err) => {
       const dead = /Extension context invalidated/i.test(String(err?.message || err));
-      if (!dead) console.warn("[HSU PLUS] 강의실 표시 실패:", err);
+      if (!dead) console.warn("[HSU Plus] 강의실 표시 실패:", err);
     }),
     timeout,
   ]).then(jump);

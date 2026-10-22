@@ -1,6 +1,6 @@
 # AI 연결 안내 (처음 한 번, 약 30분)
 
-HSU PLUS의 AI는 이렇게 이어져요.
+HSU Plus의 AI는 이렇게 이어져요.
 
 ```
 학생 크롬(확장) ──직접 쓴 질문만──▶ 우리 AI 서버(Cloudflare Worker, 무료) ──▶ AI 모델(Haiku·Gemini 등)
@@ -33,7 +33,7 @@ PowerShell에서 `node -v` → `v20` 이상이 나오면 OK.
    - 실수로 노출되면 콘솔에서 그 키를 지우고(Disable/Delete) 새로 만들면 돼요.
 
 > Gemini로 쓰고 싶으면: [aistudio.google.com](https://aistudio.google.com)에서 API 키를 만들고 **결제(유료 등급)를 켠 프로젝트**에서 써요.
-> 무료 등급은 보낸 내용을 Google이 제품 개선에 쓴다고 요금표에 적혀 있어서 HSU PLUS에는 쓰지 않아요.
+> 무료 등급은 보낸 내용을 Google이 제품 개선에 쓴다고 요금표에 적혀 있어서 HSU Plus에는 쓰지 않아요.
 
 ## 2. Cloudflare 가입 (무료, 카드 필요 없음)
 
@@ -85,9 +85,9 @@ npx wrangler deploy
    ```js
    export const AI_ENDPOINT = "https://hsuplus-ai.○○○.workers.dev";
    ```
-2. `chrome://extensions` → HSU PLUS **새로고침** → e클래스 새로고침
+2. `chrome://extensions` → HSU Plus **새로고침** → e클래스 새로고침
 3. AI 탭 위에 **● AI 연결됨**이 보이면 끝. 직접 질문을 하나 써서 보내 봐요.
-   답 아래에 "AI 답변 · 날짜·마감은 학교 정보 그대로"가 붙으면 AI가 답한 거예요.
+   답 아래에 "AI 답변"이 붙으면 AI가 답한 거예요. "기본 답변 · (이유)"면 AI 대신 브라우저가 답한 거예요.
 
 ## 7. (선택) 모델 비교 시험
 
@@ -159,10 +159,10 @@ npx wrangler d1 execute hsuplus --remote --command "SELECT COUNT(*) AS 설치, S
 | 한 설치당 하루 질문 | 20회 (`ASK_DAILY_PER_INSTALL`) |
 | 1분에 | 6회 (`PER_MINUTE`) |
 | 서버 전체 하루 비용 | $1 넘으면 그날은 기본 답변 (`DAILY_COST_CAP_MICROUSD`) |
-| 답 길이 | 400토큰 (`ASK_MAX_TOKENS`) |
+| 답 길이 | 600토큰 (`ASK_MAX_TOKENS`, 잘리면 한 번만 2배로 다시) |
 | 콘솔 쪽 | 선불 크레딧 + 월 한도 (1단계) |
 
-질문 한 번은 Haiku 5.5 기준 약 0.2~0.5원이에요. 질문 내용·할 일 목록은 서버에 저장하지 않아요(하루 횟수 숫자만 세요).
+질문 한 번은 Haiku 5.5 기준 약 0.5원이에요 (10/21 실측: 테스트 143회에 $0.05). 질문 내용·할 일 목록은 서버에 저장하지 않아요(하루 횟수 숫자만 세요).
 
 ## 문제가 생기면
 

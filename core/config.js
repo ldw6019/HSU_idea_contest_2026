@@ -1,4 +1,4 @@
-// HSU PLUS 설정 (배포할 때 여기만 고친다)
+// HSU Plus 설정 (배포할 때 여기만 고친다)
 //
 // AI 서버(Cloudflare Worker) 주소. 비어 있으면 AI를 쓰지 않고 브라우저 안 기본 답변만 한다.
 //  예: "https://hsuplus-ai.<내-계정>.workers.dev"  (docs/AI-SETUP.md 7단계)
