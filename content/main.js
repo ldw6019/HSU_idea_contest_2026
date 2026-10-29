@@ -155,7 +155,8 @@
   ];
 
   // 디자인: 10/20 시안 A(또렷하게) 선택 — 지금 구조 그대로, 머리줄 로고·그라데이션, 둥근 탭 밑줄, e클래스 바탕 회색
-  const launcher = el("button", { class: "launcher", title: "HSU Plus 열기", "aria-label": "HSU Plus 열기" }, [logoMark()]);
+  // 10/29 사용자: "+"만 있으면 '추가' 버튼처럼 보여서 아래에 작게 "HSU+"
+  const launcher = el("button", { class: "launcher", title: "HSU Plus 열기", "aria-label": "HSU Plus 열기" }, [logoMark(), el("span", { class: "ln-txt", text: "HSU+" })]);
   const panel = el("section", { class: "panel hidden", "aria-label": "HSU Plus" });
   // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
   const wideBtn = el("button", {
@@ -1628,7 +1629,9 @@
       quiz: all ? all.quiz.filter((it) => !isHidden(it.id)) : null,
       program: mine?.ok ? progAll.filter((x) => !isHidden(x.id)) : null,
     };
-    const hotOf = (k) => (k === "program" ? (lists.program || []).some((x) => x.kind === "survey" || isUrgent(x.at)) : (lists[k] || []).some((it) => isUrgent(it.due)));
+    // 10/29 사용자: 빨간 점은 오늘·내일 마감(일정)이 있는 칸에만 (전에는 이틀 이내 + 설문이라 거의 모든 칸에 붙었음)
+    const soon = (iso) => !!iso && daysLeft(iso) <= 1;
+    const hotOf = (k) => (k === "program" ? (lists.program || []).some((x) => soon(x.at)) : (lists[k] || []).some((it) => soon(it.due)));
 
     const seg = el(
       "div",
@@ -1642,7 +1645,7 @@
             class: k.id === weekKind ? "seg-btn active" : "seg-btn",
             role: "tab",
             "aria-selected": String(k.id === weekKind),
-            title: hot ? (k.id === "program" ? "설문이 남았거나 이틀 안에 일정이 있어요" : "마감 이틀 이내 항목이 있어요") : null,
+            title: hot ? (k.id === "program" ? "오늘·내일 일정이 있어요" : "오늘·내일 마감이 있어요") : null,
             onclick: () => {
               weekKind = k.id;
               showHiddenList = false;
@@ -2178,8 +2181,8 @@
         ]),
         el("p", { class: "pt-note", text: note }),
       ]),
-      el("div", { class: "pt-stats" }, stats),
-      pointHistory(S.recent, "최근 포인트 내역"),
+      // 10/29 사용자: 학기별 숫자·내역은 접어 둔다 (한 화면에 숫자가 너무 많았음)
+      el("details", { class: "pt-more" }, [el("summary", { text: "학기별 점수·최근 내역 보기" }), el("div", { class: "pt-stats" }, stats), pointHistory(S.recent, "최근 포인트 내역")]),
     ]);
   }
   // 졸업 요건(800점)을 이미 채운 사람: 게이지 없이 점수와 이번 학기 모은 점수만 (장학금 경쟁 등)
