@@ -884,3 +884,6 @@ button.ai-pick { width: 100%; font: inherit; text-align: left; cursor: pointer; 
 .panel:not(.wide) .mon-pill.k-ev { background: var(--ot-ev); }
 .panel:not(.wide) .mon-pill.due { width: 100%; }
 .dr-when { line-height: 1.35; word-break: keep-all; overflow-wrap: anywhere; } /* 기간이 길면 줄바꿈 (옆 꼬리표와 겹쳤음) */
+
+/* 10/29: 액자 안 첫 칸의 위 여백이 액자 밖으로 새어(마진 겹침) 회색 바탕 위에 흰 띠가 보이던 것 */
+.frame-body { display: flow-root; }
