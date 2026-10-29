@@ -81,6 +81,29 @@ const label = (iso) => {
 };
 const cut = (s, n = 80) => String(s || "").replace(/\s+/g, " ").trim().slice(0, n);
 const courseName = (s) => cut(String(s || "").replace(/\[[^\]]*\]|\([^)]*\)/g, ""), 40);
+// 10/29: AI가 "이번 주·다음 주·이번 달"이 며칠부터인지 알게 기간과 항목마다 어느 주인지 같이 보낸다
+//  (전에는 오늘 날짜만 보내서 "다음 주는?"에도 이번 주 마감부터 답했음)
+const md = (d) => `${d.getMonth() + 1}/${d.getDate()}(${DAY[d.getDay()]})`;
+function mondayOf(now) {
+  const m = new Date(now);
+  m.setHours(0, 0, 0, 0);
+  m.setDate(m.getDate() - ((m.getDay() + 6) % 7));
+  return m;
+}
+export function rangesOf(now = new Date()) {
+  const mon = mondayOf(now);
+  const plus = (n) => new Date(mon.getFullYear(), mon.getMonth(), mon.getDate() + n);
+  const mStart = new Date(now.getFullYear(), now.getMonth(), 1), mEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  const nStart = new Date(now.getFullYear(), now.getMonth() + 1, 1), nEnd = new Date(now.getFullYear(), now.getMonth() + 2, 0);
+  return { thisWeek: `${md(mon)}~${md(plus(6))}`, nextWeek: `${md(plus(7))}~${md(plus(13))}`, thisMonth: `${md(mStart)}~${md(mEnd)}`, nextMonth: `${md(nStart)}~${md(nEnd)}` };
+}
+/** 날짜가 어느 주인지: "이번 주" / "다음 주" / "그 뒤" (0시 마감은 전날로) */
+export function weekOf(iso, now = new Date()) {
+  const d = new Date(day0(dueDay(new Date(iso))));
+  const diff = Math.round((d - mondayOf(now)) / 86400000);
+  return diff < 0 ? "지난 주" : diff < 7 ? "이번 주" : diff < 14 ? "다음 주" : "그 뒤";
+}
+
 /** 이번 주 일요일 24:00 (월요일 0시 기준 다음 주 월요일) */
 function weekEnd(now) {
   const s = new Date(now);
@@ -108,7 +131,7 @@ export function buildContext(
   now = new Date()
 ) {
   const refs = new Map();
-  const ctx = { today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}(${DAY[now.getDay()]}) ${hm(now)}`, tasks: [], myPrograms: [], surveys: [], myEvents: [], academic: [], openPrograms: [], points: null };
+  const ctx = { today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}(${DAY[now.getDay()]}) ${hm(now)}`, ranges: rangesOf(now), tasks: [], myPrograms: [], surveys: [], myEvents: [], academic: [], openPrograms: [], points: null };
 
   // 남은 강의·과제·퀴즈 (기간이 시작된 강의만, 마감 지난 것 제외), 마감 순 최대 40개
   const KIND = { video: "강의", assignment: "과제", quiz: "퀴즈" };
@@ -119,7 +142,7 @@ export function buildContext(
     .slice(0, 40);
   tasks.forEach((it, i) => {
     const id = `t${i + 1}`;
-    const t = { id, kind: KIND[it.type], title: cut(it.title), course: courseName(it.course), due: label(it.due), dday: daysLeft(it.due, now) };
+    const t = { id, kind: KIND[it.type], title: cut(it.title), course: courseName(it.course), due: label(it.due), dday: daysLeft(it.due, now), week: weekOf(it.due, now) };
     if (it.type === "video" && it.meta?.percent != null) t.progress = `${it.meta.percent}%`;
     ctx.tasks.push(t);
     refs.set(id, { kind: "task", item: it });
@@ -136,6 +159,7 @@ export function buildContext(
       if (s?.kind === "exact") {
         entry.next = `${label(s.start).replace(/ .*/, "")} ${hm(new Date(s.start))}-${hm(new Date(s.end))}`;
         entry.dday = daysLeft(s.start, now);
+        entry.week = weekOf(s.start, now);
       } else if (s?.start) entry.period = `${label(s.start).replace(/ .*/, "")} ~ ${s.end ? label(s.end) : ""}`;
       if (myEnds[p.id]) {
         entry.endsAt = label(myEnds[p.id]);
@@ -162,7 +186,7 @@ export function buildContext(
     .forEach((e, i) => {
       const id = `e${i + 1}`;
       const st = new Date(e.start);
-      ctx.myEvents.push({ id, title: cut(e.title, 40), when: e.allDay ? label(e.start).replace(/ .*/, "") : `${label(e.start).replace(/ .*/, "")} ${hm(st)}`, dday: daysLeft(e.start, now) });
+      ctx.myEvents.push({ id, title: cut(e.title, 40), when: e.allDay ? label(e.start).replace(/ .*/, "") : `${label(e.start).replace(/ .*/, "")} ${hm(st)}`, dday: daysLeft(e.start, now), week: weekOf(e.start, now) });
       refs.set(id, { kind: "event", item: e });
     });
   // 학교 학사일정 (공개): 진행 중이거나 14일 안에 시작하는 신청·시험, 최대 8개
@@ -199,6 +223,7 @@ export function buildContext(
       } else if (exact) {
         entry.when = `${label(ex.start).replace(/ .*/, "")} ${hm(new Date(ex.start))}-${hm(new Date(ex.end))}`;
         entry.clashWithClass = info ? !info.free : clashes(slots, ex.start, ex.end);
+        entry.week = weekOf(ex.start, now);
       } else if (it.start) entry.period = `${label(it.start).replace(/ .*/, "")} ~ ${it.end ? label(it.end).replace(/ .*/, "") : ""}`;
       ctx.openPrograms.push(entry);
       refs.set(id, { kind: "open", item: it, exact });
