@@ -49,6 +49,10 @@ check("범위 밖 → 정해진 문구", r.status === 200 && r.body.picks.length
 mockOut = { intent: "write_code", picks: [], message: "..." };
 r = await call("/v1/ask", { question: "아무거나", context });
 check("알 수 없는 intent → 범위 밖", r.body.intent === "out_of_scope");
+// 3-1) 목록에 없는 intent라도 실제 항목 번호로 일정을 말하면 살림 (10/29)
+mockOut = { intent: "this_month", picks: [], message: "이번 달은 {t1}부터 하세요." };
+r = await call("/v1/ask", { question: "이번 달 할 일", context }, { install: "aaaaaaaaaaaaaaaa3333" });
+check("모르는 intent + 항목 번호 → 일정 답", r.body.intent === "week" && r.body.picks.length === 1, JSON.stringify(r.body));
 
 // 3-2) intent는 일정인데 안내 문구에 코드·영어 번역을 끼워 넣으면 버림
 mockOut = { intent: "today", picks: [{ id: "t1" }], message: "def sort(a): return sorted(a)" };

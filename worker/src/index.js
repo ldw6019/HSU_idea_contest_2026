@@ -121,7 +121,10 @@ export function dropLinkSentences(message) {
  */
 export function cleanAnswer(out, context) {
   const ids = new Set(["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
-  const intent = ASK_INTENTS.includes(out?.intent) ? out.intent : "out_of_scope";
+  // 목록에 없는 intent는 범위 밖으로 본다. 단, 문장이 실제 항목 번호({t1} 등)로 일정을 말하고 있으면 일정 답으로 살린다
+  //  (10/29 비교 시험: "이번 달 할 일 정리해 줘"가 목록에 없는 종류로 답해 거절 문구가 나온 것으로 추정)
+  const refsInMsg = typeof out?.message === "string" && [...out.message.matchAll(REF)].some((m) => ids.has(m[1]));
+  const intent = ASK_INTENTS.includes(out?.intent) ? out.intent : refsInMsg && out?.intent !== "out_of_scope" ? "week" : "out_of_scope";
   if (intent === "out_of_scope") return { intent, picks: [], message: OUT_OF_SCOPE_MSG };
   let message = typeof out.message === "string" ? out.message : "";
   message = message

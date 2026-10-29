@@ -1,7 +1,7 @@
 // AI에게 주는 지시문과 답 형식. 답은 항상 "도구 입력(JSON)"으로만 받는다.
 
 // ---------- AI 탭 질문 ----------
-export const ASK_INTENTS = ["today", "week", "free", "points", "programs", "academic", "out_of_scope"];
+export const ASK_INTENTS = ["today", "week", "month", "free", "points", "programs", "academic", "out_of_scope"]; // month: 10/29 추가 ("이번 달" 질문)
 
 // 10/20 답 모양 변경(사용자): 카드 목록 대신 "문장 안에 이름" — 항목은 {t1}처럼 번호로만 쓰고, 화면이 진짜 이름·D-day 칩으로 바꿔 그린다
 //  → 모델이 제목·날짜를 지어낼 여지가 없음. message를 맨 앞에 둬서 답 길이가 모자라도 문장이 먼저 나오게(예전엔 잘려서 빈 문장)

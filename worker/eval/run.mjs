@@ -57,6 +57,8 @@ for (const name of presets) {
       const ans = cleanAnswer(r.output, CONTEXT);
       // 서버가 지어낸 날짜 때문에 문장을 버렸으면 원래 문장을 같이 보여 줌
       if (r.output?.message && ans.message !== r.output.message && /확인해 보세요|항목이 없어요/.test(ans.message)) ans.message += `  [버려진 문장: ${String(r.output.message).slice(0, 120)}]`;
+      // 범위 밖이 됐는데 모델이 낸 intent가 달랐으면 같이 보여 줌 (원인 찾기용)
+      if (ans.intent === "out_of_scope" && r.output?.intent !== "out_of_scope") ans.message += `  [모델 intent: ${r.output?.intent}]`;
       const why = grade(c, ans);
       if (!why.length) ok++;
       console.log(`${why.length ? "FAIL" : "PASS"} ${c.q}  (${dt}ms) → ${ans.intent} [${ans.picks.map((p) => p.id).join(",")}] ${ans.message}${why.length ? "  ← " + why.join("; ") : ""}`);
