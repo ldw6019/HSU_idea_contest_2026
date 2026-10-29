@@ -2932,7 +2932,8 @@
   // 10/29: 시연 모드 스위치는 평소엔 숨긴다 (실수로 켜면 가짜 과제를 진짜로 믿을 수 있음).
   //  아래 버전 글자를 5번 누르면 나타나고, 켜져 있을 때는 항상 보인다
   let devTaps = 0;
-  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"), DEMO || devTaps >= 5 ? demoSwitch() : null);
+  // replaceChildren은 null을 "null" 글자로 넣으므로 빈 칸은 걸러서 넘긴다
+  const renderSetOpts = () => setOpts.replaceChildren(...[el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"), DEMO || devTaps >= 5 ? demoSwitch() : null].filter(Boolean));
   const wipeBtn = el("button", {
     class: "small danger",
     text: "내 데이터 모두 지우기",
