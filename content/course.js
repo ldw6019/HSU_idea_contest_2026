@@ -201,7 +201,7 @@
       return;
     }
     const row = mk("div", "hsup-row");
-    const pct = Math.round((learned / required) * 1000) / 10;
+    const pct = Math.min(100, Math.round((learned / required) * 1000) / 10); // 10/29: 다시 본 시간까지 쌓여도 100%까지만 (패널과 같은 숫자)
     const b = bar(learned / required, color, `${clock(learned)} / ${clock(required)} (${pct}%)`, state === "live");
     b.title = `출석 기준: 영상 길이(${clock(v.lengthSec)})의 90%`;
     row.appendChild(b);

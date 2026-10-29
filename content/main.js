@@ -663,7 +663,7 @@
         tip("비교과", "신청할 만한 것(수업·알바와 안 겹치는 것만 보기), 졸업 포인트, 안 낸 설문"),
         tip("AI", "\"오늘 뭐 해야 돼?\"처럼 물어보면 실제 항목으로 답해요"),
       ]),
-      el("p", { class: "wl-note", text: "학생이 만든 프로토타입이에요(학교 공식 서비스 아님). 학교 사이트는 읽기만 하고 신청·제출은 하지 않아요. 성적·연락처는 읽지 않아요." }),
+      el("p", { class: "wl-note", text: "학생이 만든 프로토타입이에요(학교 공식 서비스 아님). 학교 사이트는 읽기만 하고 신청·제출은 하지 않아요. 성적·연락처는 읽지 않아요. AI 탭에 직접 질문을 쓸 때만 필요한 일정 정보(이름·학번·성적 제외)를 AI 서버로 보내고, 서버는 저장하지 않아요." }),
       el("div", { class: "wl-actions" }, [el("button", { class: "btn", text: "시작하기", onclick: () => showWelcome(false) })]),
     ]);
   }
@@ -1733,7 +1733,7 @@
       el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? el("span", { class: "siren", text: "🚨" }) : icon("warn"), el("span", { text: status })]),
     ]);
 
-  const pctText = (it) => (it.type === "video" && it.meta?.progressUnknown ? "진도 확인 불가" : it.type === "video" && it.meta?.percent != null ? `${it.meta.percent}% 수강` : "");
+  const pctText = (it) => (it.type === "video" && it.meta?.progressUnknown ? "진도 확인 불가" : it.type === "video" && it.meta?.percent != null ? `진도 ${it.meta.percent}%` : "");
 
   // 강의는 강의 화면 대신 강의실(과목 페이지)의 그 강의 위치로 보낸다 (예전 캐시엔 courseId가 없으면 원래 주소)
   const openUrl = (it) =>
@@ -2528,7 +2528,7 @@
     const chips = el(
       "div",
       { class: "ap-filter" },
-      PGROUPS.map((g) =>
+      PGROUPS.filter((g) => g.id === "all" || g.id === progGroup || counts[g.id] > 0).map((g) =>
         el("button", {
           class: g.id === progGroup ? "fchip active" : "fchip",
           title: g.tip || null,
@@ -2601,6 +2601,7 @@
     if (current === "ai") renderAI();
   });
   let aiBusy = false;
+  let aiState = null; // 10/29: 배지가 실제 결과를 따르게 (null 아직 안 물어봄 / "ok" 마지막 질문 성공 / "down" 연결 실패)
   let M_AI = null; // core/ai.js (조사 고치기 등 화면 그릴 때 바로 쓰려고)
   mods.then((m) => (M_AI = m.ai));
   // AI가 답하지 못했을 때 꼬리표에 붙일 짧은 사유 (10/19 사용자: 길게 쓰지 말고 "기본 답변 · 사유"만)
@@ -2728,17 +2729,26 @@
         const refs = {};
         for (const p of r.picks || []) if (built.refs.get(p.id)) refs[p.id] = built.refs.get(p.id);
         const refused = r.intent === "out_of_scope";
+        aiState = "ok";
         chat.push({ who: "bot", text: r.message || (Object.keys(refs).length ? "이걸 먼저 보세요." : "해당하는 항목이 없어요."), refs, ai: true, tag: refused ? "AI 답변 · 범위 밖 질문" : "AI 답변" });
         while (chat.length > 30) chat.shift();
         return renderAI({ scroll: true });
       }
       // 짧은 사유만 꼬리표로. 모르는 원인은 코드(원인 찾기용)
-      failNote = AI_FAIL_TAG[r?.reason] || `연결 실패 (${[r?.status || "연결 안 됨", r?.reason, r?.field].filter(Boolean).join(" · ")})`;
+      // 10/29: 모르는 원인은 기술 용어 대신 쉬운 말로 (원인 코드는 콘솔에)
+      failNote = AI_FAIL_TAG[r?.reason] || "AI 서버에 연결하지 못함";
+      if (!AI_FAIL_TAG[r?.reason]) console.warn("[HSU Plus] AI 연결 실패", r?.status, r?.reason, r?.field);
+      aiState = ["user", "rate", "global", "too_large"].includes(r?.reason) ? aiState : "down";
     }
     const a =
       intent === "academic" && !acadOn()
         ? { text: "학사일정 보기를 꺼 두었어요. 캘린더 탭 아래나 '연결 상태 · 설정'의 학사일정 스위치를 켜면 알려 드릴게요.", picks: [] }
         : ai.localAnswer(intent, built, new Date(), { kinds: presetId ? [] : ai.detectKinds(q) });
+    // 10/29: AI에 못 닿았을 때 기본 답변이 범위 밖 거절처럼 보이지 않게 (예: "오늘 공부 계획 짜줘" → "일정만 도와드려요"가 떴음)
+    if (failNote && (a.text === ai.OUT_OF_SCOPE || intent === "unknown")) {
+      a.text = "지금 AI에 연결하지 못해서 이 질문에는 답하기 어려워요. 아래 버튼은 AI 없이도 바로 답해요.";
+      a.picks = [];
+    }
     chat.push({ who: "bot", text: a.text, picks: a.picks.map((p) => ({ ...p, ref: built.refs.get(p.id) })).filter((p) => p.ref), note: a.note || null, tag: failNote ? `기본 답변 · ${failNote}` : null });
     while (chat.length > 30) chat.shift();
     renderAI({ scroll: true });
@@ -2835,7 +2845,7 @@
     if (current !== "ai") return;
     const loadingAny = eclassLoading || programsLoading || mineLoading || loading;
     const head = el("div", { class: "ai-head" }, [
-      el("div", { class: "ai-title" }, [el("strong", { text: "HSU Plus AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? " on" : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: AI_ENDPOINT ? "AI 연결됨" : "기본 답변 모드" })]),
+      el("div", { class: "ai-title" }, [el("strong", { text: "HSU Plus AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? (aiState === "down" ? " down" : " on") : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: !AI_ENDPOINT ? "기본 답변 모드" : aiState === "ok" ? "AI 연결됨" : aiState === "down" ? "AI 연결 안 됨" : "AI 켜짐" })]),
       el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
     ]);
 
@@ -2916,7 +2926,10 @@
       },
     }, [el("span", { class: "sw-label", text: "시연 모드 (가짜 데이터)" }), el("span", { class: "sw-track" }, [el("span", { class: "sw-knob" })])]);
   }
-  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"), demoSwitch());
+  // 10/29: 시연 모드 스위치는 평소엔 숨긴다 (실수로 켜면 가짜 과제를 진짜로 믿을 수 있음).
+  //  아래 버전 글자를 5번 누르면 나타나고, 켜져 있을 때는 항상 보인다
+  let devTaps = 0;
+  const renderSetOpts = () => setOpts.replaceChildren(el("span", { class: "set-opt-label", text: "보이기" }), acadSwitch("학사일정 (신청 기간·시험)"), DEMO || devTaps >= 5 ? demoSwitch() : null);
   const wipeBtn = el("button", {
     class: "small danger",
     text: "내 데이터 모두 지우기",
@@ -2983,7 +2996,7 @@
         wipeBtn,
       ]),
       settingsNote,
-      el("p", { class: "set-ver", text: `HSU Plus ${chrome.runtime.getManifest?.().version || ""} · 학생 제작 프로토타입, 학교 공식 서비스가 아니에요 · 학교 사이트는 읽기만 하고 비밀번호는 저장하지 않아요` }),
+      el("p", { class: "set-ver", onclick: () => ++devTaps === 5 && renderSetOpts(), text: `HSU Plus ${chrome.runtime.getManifest?.().version || ""} · 학생 제작 프로토타입, 학교 공식 서비스가 아니에요 · 학교 사이트는 읽기만 하고 비밀번호는 저장하지 않아요` }),
     ]),
   ]);
 

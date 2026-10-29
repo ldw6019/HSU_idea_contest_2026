@@ -301,7 +301,7 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
     const good = c.openPrograms.filter((o) => o.point && !o.clashWithClass).sort((a, b) => b.point - a.point || a.applyDday - b.applyDday);
     return {
       text: `졸업까지 ${need}점 남았어요.${semText}${good.length ? " 지금 신청할 수 있는 것 중 포인트 높은 순이에요." : ""}`,
-      picks: good.slice(0, 5).map((o) => ({ id: o.id, reason: `${o.point}점 · 신청 ${o.applyDday <= 0 ? "오늘" : `D-${o.applyDday}`} 마감` })),
+      picks: good.slice(0, 5).map((o) => ({ id: o.id, reason: null })), // 10/29: 포인트·D-day는 카드 배지에 이미 있어서 아랫줄은 일정으로
     };
   }
   if (intent === "academic") {

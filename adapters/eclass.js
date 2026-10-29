@@ -181,7 +181,8 @@ export async function fetchCourseItems(course, now = new Date()) {
   const videos = parseVideos(viewDoc).map((v) => {
     const p = progress.get(norm(v.name));
     const progressUnknown = progress.size === 0; // 온라인출석부를 못 읽음 (표가 없거나 요청 실패)
-    const ratio = v.lengthSec && p ? Math.round((p.learnedSec / v.lengthSec) * 1000) / 10 : null;
+    // 10/29: 진도 % = 출석 기준(영상 길이의 90%) 대비, 100% 넘지 않게 (강의실 표시와 같은 숫자)
+    const ratio = v.lengthSec && p ? Math.min(100, Math.round((p.learnedSec / (v.lengthSec * 0.9)) * 1000) / 10) : null;
     return makeItem({
       id: `eclass:video:${v.cmid}`,
       source: SOURCE.ECLASS,

@@ -46,7 +46,7 @@ PowerShell에서 `node -v` → `v20` 이상이 나오면 OK.
 PowerShell:
 
 ```powershell
-cd "C:\Users\everh\Desktop\ALL IN ONE\HSU-idea_contest\HSU_idea_contest_2026\worker"
+cd (저장소 폴더)\worker
 npx wrangler login
 ```
 
@@ -94,7 +94,7 @@ npx wrangler deploy
 같은 문제 21개(가짜 학생 정보)를 모델마다 풀려서 점수·속도·비용을 비교해요. 서버를 거치지 않고 이 컴퓨터에서 바로 불러요.
 
 ```powershell
-cd "C:\Users\everh\Desktop\ALL IN ONE\HSU-idea_contest\HSU_idea_contest_2026"
+cd (저장소 폴더)
 node worker/eval/run.mjs haiku-5.5
 node worker/eval/run.mjs haiku-5.5 gemini-3.8-flash
 ```
