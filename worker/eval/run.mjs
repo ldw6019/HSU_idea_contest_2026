@@ -10,11 +10,16 @@ import { callModel } from "../src/providers.js";
 import { PRESETS } from "../src/models.js";
 import { ASK_SYSTEM, ASK_TOOL } from "../src/prompts.js";
 import { cleanAnswer } from "../src/index.js";
-import { CONTEXT, CASES, grade } from "./cases.mjs";
+import { CONTEXT, CASES as MAIN, grade } from "./cases.mjs";
+import { HOLDOUT } from "./holdout.mjs";
 
-const presets = process.argv.slice(2);
+// --holdout: 점검용 새 질문 묶음 (지침을 고칠 때 기준으로 쓰지 않음)
+const useHoldout = process.argv.includes("--holdout");
+const CASES = useHoldout ? HOLDOUT : MAIN;
+const presets = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+if (useHoldout) console.log(`점검용 새 질문 ${HOLDOUT.length}개`);
 if (!presets.length) {
-  console.log(`사용법: node worker/eval/run.mjs <프리셋> [프리셋…]\n프리셋: ${Object.keys(PRESETS).join(", ")}`);
+  console.log(`사용법: node worker/eval/run.mjs <프리셋> [프리셋…] [--holdout]\n프리셋: ${Object.keys(PRESETS).join(", ")}`);
   process.exit(1);
 }
 
