@@ -138,11 +138,19 @@
     ]);
   }
 
-  function failCard(message, retry = () => loadWeek({ force: true })) {
+  // 10/30: "Failed to fetch" 같은 영어 원문 대신 쉬운 말 + 그 사이트 로그인 바로가기
+  const friendlyError = (message, site) =>
+    /failed to fetch|networkerror|load failed|timeout|abort|요청 실패/i.test(String(message || ""))
+      ? `${site || "학교 사이트"}에 연결하지 못했어요. 잠시 뒤 다시 시도해 주세요. 계속되면 그 사이트에 로그인돼 있는지 확인해 주세요.`
+      : message || "";
+  function failCard(message, retry = () => loadWeek({ force: true }), site = null) {
     return el("div", { class: "notice warn" }, [
       el("p", { text: "불러오기에 실패했어요." }),
-      el("p", { class: "sub", text: message || "" }),
-      el("button", { class: "btn ghost", text: "다시 시도", onclick: retry }),
+      el("p", { class: "sub", text: friendlyError(message, site) }),
+      el("div", { class: "row" }, [
+        site && LOGIN_URL[site] ? el("a", { class: "btn", href: LOGIN_URL[site], target: "_blank", rel: "noopener", text: "로그인하러 가기" }) : null,
+        el("button", { class: "btn ghost", text: "다시 시도", onclick: retry }),
+      ]),
     ]);
   }
 
@@ -768,7 +776,7 @@
       // 이번 주 탭에서는 끄는 스위치·전체 보기 없이 제목만 (10/19 사용자: 여기서 실수로 꺼 버리지 않게. 끄기는 캘린더·설정에서)
       el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" })]),
       ...list.slice(0, 2).map(row), // 아래 할 일 목록을 너무 밀어내지 않게 2개까지 (나와 상관없는 건 ×로 숨김)
-      list.length > 2 ? el("div", { class: "ac-more", text: `그 밖에 ${list.length - 2}개는 캘린더에서` }) : null,
+      list.length > 2 ? el("button", { type: "button", class: "ac-more linkish", text: `그 밖에 ${list.length - 2}개는 캘린더에서 보기 ›`, onclick: () => { calMode = "month"; current = "calendar"; renderTabs(); renderBody(); } }) : null,
       unhide,
     ]);
   }
@@ -790,6 +798,8 @@
   let calWeekendOpen = null; // null이면 주말에 일정이 있을 때만 펼침
   let calMonth = null; // "YYYY-MM" (null이면 이번 달)
   let calDay = null; // 아래에 목록을 열어 둔 날 "YYYY-MM-DD"
+  // 10/30: 날짜를 누르면 목록이 화면 아래에 생겨 반응이 없는 것처럼 보였음 → 목록이 보이게 스크롤
+  const revealDay = () => requestAnimationFrame(() => content.querySelector(".day-detail")?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
   let calNote = ""; // 내보내기·가져오기 결과 한 줄
   let evDraft = null; // 일정 넣기/고치기 칸 (입력 중인 값)
 
@@ -850,6 +860,13 @@
           at: events[f.id]?.at || Date.now(),
         });
         evDraft = null;
+        // 10/30: 수업 시간과 겹치면 알려 줌 (저장은 그대로)
+        const toMin = (t) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+        const clash = (week?.ok ? week.items : []).filter((c) => {
+          const st = new Date(c.start), en = new Date(c.end || c.start);
+          return f.w.includes(st.getDay()) && minutesOf(st) < toMin(f.e) && toMin(f.s) < minutesOf(en);
+        });
+        calNote = clash.length ? `저장했어요. ${[...new Set(clash.map((c) => `${c.course || c.title}(${DAY[new Date(c.start).getDay()]} ${hm(new Date(c.start))})`))].join(", ")} 수업과 시간이 겹쳐요.` : calNote;
         if (f.w.some((d) => d === 0 || d === 6)) calWeekendOpen = null; // 주말 고정 일정이면 자동 펼침이 다시 판단하게
         calMode = "week";
         return renderCalendar();
@@ -1144,7 +1161,7 @@
     const parts = [sub];
     if (!week.ok) {
       const e = week.error || {};
-      parts.push(e.kind === "login" ? loginCard(e.site) : failCard(e.message));
+      parts.push(e.kind === "login" ? loginCard(e.site) : failCard(e.message, undefined, "종합정보시스템"));
     } else if (week.error) parts.push(el("p", { class: "stale", text: "새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
 
     const classes = week.ok ? weekItems(monday).map((it) => ({ kind: "class", title: it.course || it.title, place: it.place, professor: it.professor, start: new Date(it.start), end: new Date(it.end || it.start) })) : [];
@@ -1186,6 +1203,7 @@
           onclick: () => {
             calDay = calDay === ymd(d) ? null : ymd(d);
             renderCalendar();
+            revealDay();
           },
         })
       );
@@ -1214,6 +1232,7 @@
             onclick: () => {
               calDay = calDay === ymd(d) ? null : ymd(d);
               renderCalendar();
+              revealDay();
             },
           },
           pills
@@ -1235,7 +1254,26 @@
       const col = el("div", { class: sameDay(d, now) ? "tt-col today" : "tt-col" });
       col.style.height = totalPx + "px";
       col.style.backgroundSize = `100% ${HOUR_PX}px`;
-      for (const x of timed.filter((t) => sameDay(t.start, d))) {
+      // 10/30: 시간이 겹치는 블록은 나란히 (전에는 매주 학원 일정이 같은 시간 수업을 완전히 가렸음)
+      const dayItems = timed.filter((t) => sameDay(t.start, d)).sort((a, b) => a.start - b.start);
+      const span = (x) => [minutesOf(x.start), x.end > x.start && sameDay(x.start, x.end) ? minutesOf(x.end) : x.end > x.start ? 24 * 60 : minutesOf(x.start) + 60];
+      const laneOf = new Map(), lanesOf = new Map();
+      for (let i = 0; i < dayItems.length; ) {
+        // 서로 이어서 겹치는 묶음 하나
+        let j = i, groupEnd = span(dayItems[i])[1];
+        while (j + 1 < dayItems.length && span(dayItems[j + 1])[0] < groupEnd) groupEnd = Math.max(groupEnd, span(dayItems[++j])[1]);
+        const ends = [];
+        for (let k = i; k <= j; k++) {
+          const [st, en] = span(dayItems[k]);
+          let lane = ends.findIndex((x) => x <= st);
+          if (lane < 0) lane = ends.length;
+          ends[lane] = en;
+          laneOf.set(dayItems[k], lane);
+        }
+        for (let k = i; k <= j; k++) lanesOf.set(dayItems[k], ends.length);
+        i = j + 1;
+      }
+      for (const x of dayItems) {
         const s = x.start;
         const e = x.end > s ? x.end : new Date(s.getTime() + 3600000);
         const endMin = sameDay(s, e) ? minutesOf(e) : maxH * 60;
@@ -1258,6 +1296,14 @@
         );
         block.style.top = top + "px";
         block.style.height = height - 2 + "px";
+        const lanes = lanesOf.get(x) || 1;
+        if (lanes > 1) {
+          const lane = laneOf.get(x) || 0;
+          block.style.left = `calc(${(lane * 100) / lanes}% + 1px)`;
+          block.style.right = "auto";
+          block.style.width = `calc(${100 / lanes}% - 2px)`;
+          block.classList.add("narrow");
+        }
         if (x.kind === "class") block.style.background = courseColor(x.title)?.c || "var(--ot-muted)";
         col.appendChild(block);
       }
@@ -1385,6 +1431,7 @@
             onclick: () => {
               calDay = calDay === ymd(dd) ? null : ymd(dd);
               renderCalendar();
+              revealDay();
             },
           }, [el("span", { class: "mon-num", text: String(dd.getDate()) })])
         );
@@ -1509,7 +1556,7 @@
           el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(s.start)}`, text: days <= 0 ? "오늘" : `D-${days}` }),
           el("span", { class: "when", text: `${dayLabel(st)} ${hm(st)}–${hm(new Date(s.end))}` }),
         ]),
-        el("span", { class: "tc-status plain", text: x.weekly ? "매주 · 참여 예정" : "참여 예정" }),
+        el("span", { class: "tc-status plain", text: `${x.weekly ? "매주 · " : ""}${p.phase === "progress" ? "진행 중" : "시작 대기"}` }), // 10/30: 내 비교과 탭과 같은 이름으로
       ]),
     ]);
   }
@@ -1568,7 +1615,7 @@
       icon("clock"),
       el("span", { text: parts.join(" · ") }),
       unknown ? el("span", { class: "muted", text: ` (길이·진도를 모르는 강의 ${unknown}개 제외)` }) : null,
-      doomed ? el("span", { class: "warn", text: ` · 출석 어려움 ${doomed}` }) : null,
+      doomed ? el("span", { class: "warn-chip", text: `출석 어려움 ${doomed}` }) : null, // 10/30: 줄바꿈 때 "·"로 시작하던 것 → 작은 꼬리표
     ]);
   }
 
@@ -1666,7 +1713,7 @@
       if (!mine) bodyParts = [placeholder("내 비교과를 확인하고 있어요…")];
       else if (!mine.ok) {
         const e = mine.error || {};
-        bodyParts = [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }))];
+        bodyParts = [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }), "비교과 (스마트자기관리시스템)")];
       } else {
         bodyParts = [];
         if (mine.error) bodyParts.push(el("p", { class: "stale", text: "비교과를 새로 불러오지 못해 예전 데이터를 보여주고 있어요." }));
@@ -1674,7 +1721,7 @@
         bodyParts.push(hiddenSection(progAll.filter((x) => isHidden(x.id)), (x) => (x.kind === "event" ? x.ev.t : x.p.title)));
       }
     } else if (!eclass) bodyParts = [placeholder("과목별 과제와 강의를 확인하고 있어요…")];
-    else if (!eclass.ok) bodyParts = [eclass.error?.kind === "login" ? loginCard("e클래스", () => location.reload()) : failCard(eclass.error?.message, () => loadEclass({ force: true }))];
+    else if (!eclass.ok) bodyParts = [eclass.error?.kind === "login" ? loginCard("e클래스", () => location.reload()) : failCard(eclass.error?.message, () => loadEclass({ force: true }), "e클래스")];
     else {
       const items = lists[weekKind];
       bodyParts = [];
@@ -2107,7 +2154,7 @@
         hideId ? hideBtn(hideId) : null,
       ]),
       el("div", { class: "tc-foot" }, [
-        el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}점 프로그램` : "종료된 프로그램" })]),
+        el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}p 프로그램` : "종료된 프로그램" })]),
         el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: "설문 필요" })]),
       ]),
     ]);
@@ -2219,7 +2266,7 @@
     if (!mine) return [placeholder("신청한 비교과와 포인트를 확인하고 있어요…")];
     if (!mine.ok) {
       const e = mine.error || {};
-      return [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }))];
+      return [e.kind === "login" ? loginCard(e.site || "비교과 (스마트자기관리시스템)", () => loadMine({ force: true })) : failCard(e.message, () => loadMine({ force: true }), "비교과 (스마트자기관리시스템)")];
     }
     const g = mineGroups();
     const parts = [];
@@ -2519,13 +2566,14 @@
 
   function renderApply() {
     if (!programs) return [placeholder("불러오는 중…")];
-    if (!programs.ok) return [failCard(programs.error?.message, () => loadPrograms({ force: true }))];
+    if (!programs.ok) return [failCard(programs.error?.message, () => loadPrograms({ force: true }), "비교과 (스마트자기관리시스템)")];
     const now = Date.now();
     const all = programs.data.filter((it) => !it.due || new Date(it.due).getTime() >= now);
     const groupOf = (it) => progGroupOf(it, classOf(it)?.category);
-    const counts = Object.fromEntries(PGROUPS.map((g) => [g.id, g.id === "all" ? all.length : all.filter((it) => groupOf(it) === g.id).length]));
-    let list = progGroup === "all" ? all : all.filter((it) => groupOf(it) === progGroup);
-    if (progFree) list = list.filter((it) => applyInfo(it)?.free !== false);
+    // 10/30: "안 겹치는 것만"을 켜면 칩 숫자도 걸러진 개수로
+    const pool = progFree ? all.filter((it) => applyInfo(it)?.free !== false) : all;
+    const counts = Object.fromEntries(PGROUPS.map((g) => [g.id, g.id === "all" ? pool.length : pool.filter((it) => groupOf(it) === g.id).length]));
+    let list = progGroup === "all" ? pool : pool.filter((it) => groupOf(it) === progGroup);
     if (progSort === "point") list = [...list].sort((a, b) => (b.meta?.point || 0) - (a.meta?.point || 0) || byDue(a, b));
 
     const chips = el(
@@ -2614,6 +2662,7 @@
 
   function aiData() {
     return {
+      missing: [!eclass?.ok && "eclass", !programs?.ok && "programs", !mine?.ok && "mine", !week?.ok && "timetable"].filter(Boolean),
       eclassItems: eclass?.ok ? eclass.data.items.filter((it) => !isHidden(it.id)) : [], // 숨긴 항목은 AI 답에서도 뺀다
       myPrograms: mine?.ok ? { ...mine.data, surveys: mine.data.surveys.filter((p) => !isHidden(`survey:${p.id}`)) } : null,
       openPrograms: programs?.ok ? programs.data : [],

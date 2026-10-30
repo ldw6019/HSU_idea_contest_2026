@@ -133,12 +133,15 @@ function isExact(start, end) {
  *   context: 실제로 보낼 내용 ("보낼 내용 보기"에 그대로 보여 줌)
  *   refs: 짧은 번호 → 화면용 원래 항목 (보내지 않음)
  */
+// 10/30: 불러오지 못한 정보 (체험 검토: e클래스를 못 불러왔는데 "남은 강의·과제·퀴즈가 없어요"라고 답했음)
+export const MISSING = { eclass: "e클래스(강의·과제·퀴즈)", programs: "신청할 수 있는 비교과 목록", mine: "내 비교과·포인트·설문", timetable: "시간표" };
+
 export function buildContext(
-  { eclassItems = [], myPrograms = null, openPrograms = [], timetable = [], myNext = {}, myEnds = {}, events = [], academic = [], pointSum = null, openInfo = {} } = {},
+  { missing = [], eclassItems = [], myPrograms = null, openPrograms = [], timetable = [], myNext = {}, myEnds = {}, events = [], academic = [], pointSum = null, openInfo = {} } = {},
   now = new Date()
 ) {
   const refs = new Map();
-  const ctx = { today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}(${DAY[now.getDay()]}) ${hm(now)}`, ranges: rangesOf(now), tasks: [], myPrograms: [], surveys: [], myEvents: [], academic: [], openPrograms: [], points: null };
+  const ctx = { ...(missing.length ? { missing: missing.map((k) => MISSING[k]).filter(Boolean) } : {}), today: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}(${DAY[now.getDay()]}) ${hm(now)}`, ranges: rangesOf(now), tasks: [], myPrograms: [], surveys: [], myEvents: [], academic: [], openPrograms: [], points: null };
 
   // 남은 강의·과제·퀴즈 (기간이 시작된 강의만, 마감 지난 것 제외), 마감 순 최대 40개
   const KIND = { video: "강의", assignment: "과제", quiz: "퀴즈" };
@@ -276,6 +279,16 @@ export function localAnswer(intent, { context: full }, now = new Date(), { kinds
   c.myEvents ||= [];
   c.academic ||= [];
   if (intent === "out" || intent === "unknown") return { text: intent === "out" ? OUT_OF_SCOPE : "이 질문은 기본 답변으로는 답하기 어려워요. 아래 버튼으로 물어봐 주세요.", picks: [] };
+  const a = answerFor(intent, c, now);
+  // 불러오지 못한 정보가 걸린 질문이면 "없어요" 대신 "못 불러왔어요"를 먼저 말한다
+  const miss = full.missing || [];
+  const need = { today: ["eclass"], week: ["eclass"], free: ["programs", "timetable"], programs: ["programs"], points: ["mine"] }[intent] || [];
+  const lost = need.filter((k) => miss.includes(MISSING[k]));
+  if (!lost.length) return a;
+  const head = `${lost.map((k) => MISSING[k]).join(", ")} 정보를 아직 불러오지 못해서 빠져 있어요.`;
+  return { ...a, text: a.picks.length ? `${head} 지금 확인된 것만 보여 드려요.` : `${head} 잠시 뒤 다시 물어보거나, 아래 '연결 상태 · 설정'에서 로그인을 확인해 주세요.` };
+}
+function answerFor(intent, c, now) {
 
   if (intent === "today") {
     const urgent = c.tasks.filter((t) => t.dday <= 1);
