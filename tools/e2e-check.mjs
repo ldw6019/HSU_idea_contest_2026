@@ -154,6 +154,23 @@ await page.keyboard.press("Escape");
 await page.waitForTimeout(300);
 check("Esc 한 번 더 → 패널 닫힘", !(await R.locator("section.panel").isVisible().catch(() => false)));
 check("콘솔 오류 없음", errors.length === 0, errors.slice(0, 3).join(" | "));
+
+// 기본은 넓게 보기, 좁게 고르면 기억 (11/2 사용자). 시연 모드는 설정을 저장하지 않아서 끄고 확인 (학교 요청은 위에서 막아 둠)
+await sw.evaluate(() => chrome.storage.local.remove("ui:demo"));
+const openPanel = async () => {
+  await page.goto("https://learn.hansung.ac.kr/");
+  await page.waitForTimeout(800);
+  await R.locator("button.launcher").click();
+  await page.waitForTimeout(1500);
+};
+await openPanel();
+check("처음엔 넓게 보기", await R.locator("section.panel").evaluate((p) => p.classList.contains("wide")));
+await R.locator("button.wide-toggle").click();
+await page.waitForTimeout(900); // 설정 저장은 0.5초 모아서
+await openPanel();
+check("좁게 보기를 고르면 다시 열어도 좁게", !(await R.locator("section.panel").evaluate((p) => p.classList.contains("wide"))) && (await R.locator("button.wide-toggle").innerText()) === "넓게 보기");
+await R.locator("button.wide-toggle").click();
+await page.waitForTimeout(900);
 console.log(`\n${pass} passed, ${fail} failed`);
 await ctx.close();
 process.exit(fail ? 1 : 0);

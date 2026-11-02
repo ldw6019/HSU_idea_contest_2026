@@ -176,17 +176,26 @@
   // 디자인: 10/20 시안 A(또렷하게) 선택 — 지금 구조 그대로, 머리줄 로고·그라데이션, 둥근 탭 밑줄, e클래스 바탕 회색
   // 10/29 사용자: "+"만 있으면 '추가' 버튼처럼 보여서 아래에 작게 "HSU+"
   const launcher = el("button", { class: "launcher", title: "HSU Plus 열기", "aria-label": "HSU Plus 열기" }, [logoMark(), el("span", { class: "ln-txt", text: "HSU+" })]);
-  const panel = el("section", { class: "panel hidden", "aria-label": "HSU Plus" });
+  // 11/2 사용자: 기본은 넓게 보기, 원하면 좁게. 고른 것은 내 설정(opt|narrow)에 남아 다른 크롬에서도 같게
+  const panel = el("section", { class: "panel hidden wide", "aria-label": "HSU Plus" });
   // 넓게 보기: 어느 탭에서든 쓸 수 있게 파란 머리줄에 둔다
   const wideBtn = el("button", {
     class: "wide-toggle",
-    text: "넓게 보기",
+    text: "좁게 보기",
     onclick: () => {
-      const on = panel.classList.toggle("wide");
-      wideBtn.textContent = on ? "좁게 보기" : "넓게 보기";
+      const wide = !panel.classList.contains("wide");
+      if (wide) delete opts.narrow;
+      else opts.narrow = 1;
+      userPut("opt", "narrow", wide ? null : 1);
+      applyWide();
       rerender();
     },
   });
+  function applyWide() {
+    const wide = opts.narrow !== 1;
+    panel.classList.toggle("wide", wide);
+    wideBtn.textContent = wide ? "좁게 보기" : "넓게 보기";
+  }
   const header = el("header", {}, [
     el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" })]),
     el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
@@ -784,14 +793,17 @@
   // ---------- 화면 옵션 (기기 사이 동기화, opt|이름) ----------
   //  acad: 0이면 학사일정 끔 (10/20 사용자: 안 궁금할 수도 있으니 켜고 끄기). 값이 없으면 켬
   let opts = {};
+  //  narrow: 1이면 좁게 보기 (값이 없으면 넓게, 11/2)
   userMap("opt").then((v) => {
     opts = v;
+    applyWide();
     rerender();
   });
   onUserChange("opt", (id, v) => {
     if (v == null) delete opts[id];
     else opts[id] = v;
     if (id === "acad" && acadOn()) loadAcademic();
+    if (id === "narrow") applyWide();
   });
   const acadOn = () => opts.acad !== 0;
   function setAcad(on) {
