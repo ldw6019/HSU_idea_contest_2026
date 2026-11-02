@@ -44,5 +44,9 @@ const enc = new TextEncoder();
 check(".ics: 75바이트 줄 접기", ics.split("\r\n").every((l) => enc.encode(l).length <= 75));
 check(".ics: 끝 시각 없으면 1시간", ics.includes("DTEND;TZID=Asia/Seoul:20261105T100000"));
 
+// 11/2: 마감 일정은 하루 전 알림
+const ics2 = buildIcs([{ uid: "d1", title: "[마감] 과제", start: new Date(2026, 10, 6), end: new Date(2026, 10, 6), allDay: true, alarmBefore: "P1D" }, { uid: "d2", title: "모임", start: "2026-11-05T19:00:00+09:00" }], new Date("2026-11-02T00:00:00Z"));
+check(".ics: 마감에 하루 전 알림", (ics2.match(/BEGIN:VALARM/g) || []).length === 1 && ics2.includes("TRIGGER:-P1D") && ics2.indexOf("BEGIN:VALARM") < ics2.indexOf("UID:d2"));
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -4,27 +4,32 @@
 //  키가 환경 변수에 없으면 실행할 때 물어본다 (붙여 넣어도 화면에 안 보이고, 어디에도 저장하지 않음).
 //  키를 파일·채팅·명령어 줄에 직접 적지 않기 (명령어 기록에 남음)
 //  키 없이 시험 도구만 확인: node worker/eval/run.mjs mock
+//  공지 → 일정 시험: node worker/eval/run.mjs haiku-5.5 --extract (8문제)
 //
 //  비용은 models.js 요금표로 계산한 추정치. 질문 21개 × 모델 1개 = 보통 1센트(약 10~20원) 안쪽.
 import { callModel } from "../src/providers.js";
 import { PRESETS } from "../src/models.js";
-import { ASK_SYSTEM, ASK_TOOL } from "../src/prompts.js";
-import { cleanAnswer } from "../src/index.js";
+import { ASK_SYSTEM, ASK_TOOL, EXTRACT_SYSTEM, EXTRACT_TOOL } from "../src/prompts.js";
+import { cleanAnswer, cleanExtract } from "../src/index.js";
+import { TODAY, EXTRACT_CASES, gradeExtract } from "./extract.mjs";
 import { CONTEXT, CASES as MAIN, grade } from "./cases.mjs";
 import { HOLDOUT } from "./holdout.mjs";
 
 // --holdout: 점검용 새 질문 묶음 (지침을 고칠 때 기준으로 쓰지 않음)
 const useHoldout = process.argv.includes("--holdout");
-const CASES = useHoldout ? HOLDOUT : MAIN;
+const useExtract = process.argv.includes("--extract");
+const CASES = useExtract ? EXTRACT_CASES : useHoldout ? HOLDOUT : MAIN;
 const presets = process.argv.slice(2).filter((a) => !a.startsWith("--"));
 if (useHoldout) console.log(`점검용 새 질문 ${HOLDOUT.length}개`);
+if (useExtract) console.log(`공지 → 일정 ${EXTRACT_CASES.length}문제 (오늘 ${TODAY})`);
 if (!presets.length) {
   console.log(`사용법: node worker/eval/run.mjs <프리셋> [프리셋…] [--holdout]\n프리셋: ${Object.keys(PRESETS).join(", ")}`);
   process.exit(1);
 }
 
 // 키 없이 도구 확인용 가짜 모델: 질문 낱말로 대충 고름 (점수는 의미 없음)
-const MOCK = async ({ user }) => {
+const MOCK = async ({ user, tool }) => {
+  if (tool === EXTRACT_TOOL) return { events: [] };
   const q = user.slice(user.lastIndexOf("질문:"));
   if (/답 알려|코드|날씨|번역/.test(q)) return { intent: "out_of_scope", picks: [], message: "" };
   return { intent: "today", message: "오늘은 {t1}부터 끝내세요." };
@@ -53,6 +58,24 @@ for (const name of presets) {
   console.log(`\n=== ${name} ===`);
   for (const c of CASES) {
     const t0 = Date.now();
+    if (useExtract) {
+      try {
+        const r = await callModel(env, { system: EXTRACT_SYSTEM, user: `오늘: ${TODAY}\n\n공지:\n${c.text}`, tool: EXTRACT_TOOL, maxTokens: 500 }); // 서버와 같게
+        const dt = Date.now() - t0;
+        ms += dt;
+        done++;
+        cost += r.cost;
+        const { events } = cleanExtract(r.output);
+        const why = gradeExtract(c, events);
+        if (!why.length) ok++;
+        console.log(`${why.length ? "FAIL" : "PASS"} ${c.name}  (${dt}ms) → ${events.map((e) => `${e.date} ${e.start || ""}${e.end ? "~" + e.end : ""} ${e.title}${e.place ? " @" + e.place : ""}`).join(" | ") || "(없음)"}${why.length ? "  ← " + why.join("; ") : ""}`);
+      } catch (err) {
+        errors++;
+        console.log(`ERR  ${c.name} → ${err.message}${err.detail ? " (" + err.detail + ")" : ""}`);
+        if (/missing key/.test(err.message) || err.status === 401 || err.status === 403) break;
+      }
+      continue;
+    }
     try {
       const r = await callModel(env, { system: ASK_SYSTEM, user: `학생 정보(JSON):\n${JSON.stringify(CONTEXT)}\n\n질문: ${c.q}`, tool: ASK_TOOL, maxTokens: 600 }); // 서버와 같게 (ASK_MAX_TOKENS)
       const dt = Date.now() - t0;
