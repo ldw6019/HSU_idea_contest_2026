@@ -707,13 +707,28 @@
     ["[A,N]", "과목 분반 표시예요 (e클래스 이름 그대로)"],
   ];
   const legendList = () => el("ul", { class: "wl-tabs legend" }, LEGEND.map(([t, d]) => el("li", {}, [el("b", { text: t }), el("span", { text: d })])));
+  // 처음 안내의 표시 읽는 법: 글자 대신 실제 화면에 나오는 모양 그대로 (11/2 사용자 "좀만 이쁘게")
+  const LEGEND_SAMPLE = {
+    "D-3": () => el("span", { class: "dchip r3", text: "D-3" }),
+    "빨간 점": () => el("span", { class: "wl-dot-sample" }, [el("span", { text: "과제" }), el("i")]),
+    "진도·출석": () => el("span", { class: "wl-bar-wrap" }, [el("span", { class: "wl-bar-sample" }, [el("i")]), el("small", { text: "62%" })]),
+    "출석 어려움": () => el("span", { class: "warn-chip", text: "출석 어려움" }),
+    "20p": () => el("span", { class: "badge program", text: "20p" }),
+    "[A,N]": () => el("span", { class: "wl-code", text: "[A,N]" }),
+  };
+  const legendGrid = () =>
+    el("div", { class: "wl-legend" }, LEGEND.map(([t, d]) => el("div", { class: "wl-lg-row" }, [el("div", { class: "wl-lg-k" }, [LEGEND_SAMPLE[t] ? LEGEND_SAMPLE[t]() : el("b", { text: t })]), el("div", { class: "wl-lg-d", text: d })])));
 
   function welcomeCard() {
     const siteRow = (name, ok, loginUrl) =>
       el("div", { class: `wl-site ${ok == null ? "wait" : ok ? "ok" : "ng"}` }, [
         el("span", { class: "dot" }),
         el("span", { class: "nm", text: name }),
-        ok == null ? el("span", { class: "st", text: "확인 중…" }) : ok ? el("span", { class: "st", text: "연결됨" }) : el("a", { class: "st", href: loginUrl || "#", target: "_blank", rel: "noopener", text: "로그인하러 가기" }),
+        ok == null
+          ? el("span", { class: "st", text: "확인 중…" })
+          : ok
+            ? el("span", { class: "st pill-ok" }, [icon("check"), el("span", { text: "연결됨" })])
+            : el("a", { class: "st pill-go", href: loginUrl || "#", target: "_blank", rel: "noopener", text: "로그인 ↗" }),
       ]);
     const sites = [siteRow("e클래스", conn ? conn.eclass : null, "https://learn.hansung.ac.kr/")];
     const known = conn?.sites || [
@@ -722,10 +737,12 @@
     ];
     for (const r of known) sites.push(siteRow(r.name, r.loggedIn, r.loginUrl));
     const missing = known.filter((r) => r.loggedIn === false).length + (conn && !conn.eclass ? 1 : 0);
-    const tip = (t, d) => el("li", {}, [el("b", { text: t }), el("span", { text: d })]);
+    const step = (n, title, extra) => el("div", { class: "wl-sec" }, [el("span", { class: "wl-num", text: String(n) }), el("span", { text: title }), extra || null]);
+    const tabCard = (t, d) => el("div", { class: "wl-tab" }, [el("b", { text: t }), el("span", { text: d })]);
+    const promise = (t) => el("li", {}, [icon("check"), el("span", { text: t })]);
     return el("div", { class: "welcome" }, [
       el("div", { class: "wl-head" }, [logoMark(), el("div", {}, [el("b", { text: "HSU Plus를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
-      el("div", { class: "wl-sec", text: "1. 세 사이트에 로그인돼 있는지 확인" }),
+      step(1, "세 사이트 로그인 확인", missing ? el("span", { class: "wl-sec-tag ng", text: `${missing}곳 로그인 필요` }) : conn ? el("span", { class: "wl-sec-tag ok", text: "모두 연결됨" }) : null),
       el("div", { class: "wl-sites" }, sites),
       missing
         ? el("div", { class: "wl-hint" }, [
@@ -742,18 +759,25 @@
             }),
           ])
         : null,
-      el("div", { class: "wl-sec", text: "2. 탭 소개" }),
-      el("ul", { class: "wl-tabs" }, [
-        tip("이번 주", "남은 강의·과제·퀴즈·비교과를 마감 순으로. 출석이 어려운 강의도 미리 알려줘요"),
-        tip("캘린더", "시간표 + 비교과 + 마감을 주간·월간으로. 톡방 공지 일정은 직접 넣기"),
-        tip("비교과", "신청할 만한 것(수업·알바와 안 겹치는 것만 보기), 졸업 포인트, 안 낸 설문"),
-        tip("AI", "\"오늘 뭐 해야 돼?\"처럼 물어보면 실제 항목으로 답해요"),
+      step(2, "탭 소개"),
+      el("div", { class: "wl-grid" }, [
+        tabCard("이번 주", "남은 강의·과제·퀴즈·비교과를 마감 순으로. 출석이 어려운 강의도 미리"),
+        tabCard("캘린더", "시간표 + 비교과 + 마감을 주간·월간으로. 톡방 공지 일정도 넣기"),
+        tabCard("비교과", "수업·알바와 안 겹치는 것만 보기, 졸업 포인트, 안 낸 설문"),
+        tabCard("AI", "\"오늘 뭐 해야 돼?\"처럼 물으면 실제 항목으로 답해요"),
       ]),
       // 11/2 신입생 관점 검토: 기호·용어 뜻이 마우스를 올려야만 보였음
-      el("div", { class: "wl-sec", text: "3. 표시 읽는 법" }),
-      legendList(),
-      el("p", { class: "wl-note", text: "학생이 만든 프로토타입이에요(학교 공식 서비스 아님). 학교 사이트는 읽기만 하고 신청·제출은 하지 않아요. 성적·연락처는 읽지 않아요. AI 탭에 직접 질문을 쓸 때만 필요한 일정 정보(이름·학번·성적 제외)를 AI 서버로 보내고, 서버는 저장하지 않아요." }),
-      el("div", { class: "wl-actions" }, [el("button", { class: "btn", text: "시작하기", onclick: () => showWelcome(false) })]),
+      step(3, "표시 읽는 법"),
+      legendGrid(),
+      el("div", { class: "wl-note" }, [
+        el("ul", { class: "wl-promise" }, [
+          promise("학교 사이트는 읽기만 해요. 신청·제출은 하지 않아요"),
+          promise("성적·연락처는 읽지 않고, 로그인 정보도 저장하지 않아요"),
+          promise("AI에는 직접 질문하거나 공지를 붙여 넣을 때만 보내요. 이름·학번·성적은 빼고, 서버는 저장하지 않아요"),
+        ]),
+        el("p", { text: "학생이 만든 프로토타입이에요 (학교 공식 서비스 아님)" }),
+      ]),
+      el("div", { class: "wl-actions" }, [el("button", { class: "btn wl-start", text: "시작하기", onclick: () => showWelcome(false) })]),
     ]);
   }
 
