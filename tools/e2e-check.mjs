@@ -87,12 +87,9 @@ await page.waitForTimeout(300);
 check("회차별 신청 프로그램은 카드 1개", (await R.locator(".tcard", { hasText: "학습법 워크숍" }).count()) === 1);
 await tab("캘린더");
 await page.waitForTimeout(300);
-const wsDays = await R.locator(".frame.cal").evaluate((root) => {
-  const names = [...root.querySelectorAll("*")].filter((n) => n.children.length === 0 && /학습법 워크숍/.test(n.textContent));
-  return names.length;
-});
 const calAll = await R.locator(".frame.cal").innerText();
-check("캘린더에 워크숍이 중복 없이 (이번 주 1회)", (calAll.match(/학습법 워크숍/g) || []).length === 1, `${(calAll.match(/학습법 워크숍/g) || []).length}회 / leaf ${wsDays}`);
+// 회차마다 이름이 있으면 캘린더에는 회차 이름 (11/2 사용자)
+check("캘린더에 회차 이름으로 중복 없이 (이번 주 1회)", (calAll.match(/1차 AI 활용 학습법/g) || []).length === 1 && !/학습법 워크숍/.test(calAll), `${(calAll.match(/1차 AI 활용 학습법/g) || []).length}회`);
 
 // 내 비교과 통째로 숨기기 (11/2 사용자: 신청에 떨어진 비교과)
 await tab("비교과");

@@ -587,10 +587,12 @@
     const out = [];
     for (const p of myPrograms()) {
       const ss = myShape(p)?.sessions || p.sessions;
+      // 11/2 사용자: 회차마다 이름이 다르면(인문학 살롱 [특강 ① 역사학] …) 캘린더에는 회차 이름을 크게 (프로그램 이름은 "기초학문 가치확산…"처럼 덜 알려짐)
+      const named = new Set(ss.map((s) => s.name).filter((n) => n && n !== p.title)).size >= 2;
       for (const s of ss) {
         const st = new Date(s.start);
         const en = new Date(s.end || s.start);
-        const base = { kind: "prog", p, s, title: p.title, session: s.name && s.name !== p.title ? s.name : null, place: p.place, url: p.url };
+        const base = { kind: "prog", p, s, title: p.title, session: s.name && s.name !== p.title ? s.name : null, named, place: p.place, url: p.url };
         if (s.kind === "exact") {
           if (st >= from && st < to) out.push({ ...base, start: st, end: en, uid: `mine-${p.id}-${st.getTime()}` });
         } else if (s.kind === "recurring") {
@@ -638,7 +640,12 @@
   /** from~to의 캘린더 항목. kind: prog / ev / due (수업은 주간에서 따로) */
   function calItems(from, to) {
     // 11/2 사용자: 이번 주 탭에서 직접 숨긴 비교과(회차·기간 끝)는 캘린더에도 안 보이게
-    const out = [...mySessions(from, to).filter((x) => !isHidden(`mine:${x.p.id}:${x.start.toISOString()}`)), ...fixedOccurrences(from, to)];
+    const out = [
+      ...mySessions(from, to)
+        .filter((x) => !isHidden(`mine:${x.p.id}:${x.start.toISOString()}`))
+        .map((x) => (x.named && x.session ? { ...x, title: x.session, session: x.title } : x)), // 회차 이름을 앞에, 프로그램 이름은 아래 줄·설명에
+      ...fixedOccurrences(from, to),
+    ];
     for (const it of deadlines()) {
       const day = dueDay(it.due); // 0시 마감은 전날 24:00
       if (day >= from && day < to) out.push({ kind: "due", it, title: it.title, sub: [DUE_NOUN[it.type], it.course].filter(Boolean).join(" · "), start: dayStart(day), end: dayStart(day), allDay: true, url: it.url, due: it.due });
