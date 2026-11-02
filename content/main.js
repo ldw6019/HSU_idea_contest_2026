@@ -545,6 +545,34 @@
       .flatMap(({ ev }) => ev.w.map((day) => ({ day, from: m(ev.s), to: m(ev.e), name: ev.t })));
   }
 
+  // 11/2 사용자: 신청에 떨어졌는데 학교 목록에 남아 있는 비교과 등은 내 비교과에서 통째로 숨김 (prog:id)
+  //  → 내 비교과·이번 주·캘린더·.ics·겹침·AI 모두에서 빠지고, 기간이 끝나 학교 목록에서 없어지면 숨긴 목록에서도 사라짐
+  const progHideId = (p) => `prog:${p.id}`;
+  // 11/2: 같은 프로그램의 회차를 따로 신청하면 학교 목록에 여러 줄 → 한 프로그램으로 합침 (예전에 저장된 데이터도, adapters/hsportal.js mergeSameProgram과 같은 규칙)
+  let mergedFor = null, merged = [];
+  function allMyPrograms() {
+    if (!mine?.ok) return [];
+    if (mergedFor === mine.data.programs) return merged;
+    const byKey = new Map();
+    for (const p of mine.data.programs) {
+      const k = p.id || p.url || p.title;
+      const q = byKey.get(k);
+      if (!q) {
+        byKey.set(k, { ...p, sessions: [...(p.sessions || [])] });
+        continue;
+      }
+      if (p.phase === "progress") q.phase = "progress";
+      const have = new Set(q.sessions.map((s) => `${s.start}|${s.end}`));
+      for (const s of p.sessions || []) if (!have.has(`${s.start}|${s.end}`)) q.sessions.push(s), have.add(`${s.start}|${s.end}`);
+      q.sessions.sort((a, b) => new Date(a.start) - new Date(b.start));
+    }
+    mergedFor = mine.data.programs;
+    merged = [...byKey.values()];
+    return merged;
+  }
+  const myPrograms = () => allMyPrograms().filter((p) => !isHidden(progHideId(p)));
+  const myHiddenPrograms = () => allMyPrograms().filter((p) => isHidden(progHideId(p)));
+
   // ---- 내 비교과 회차 (날짜·시각이 정해진 것 + 매주 회차 + 며칠짜리) ----
   // 매주 회차(예: 11/3 10:00 ~ 11/24 13:00, "3시간*4회")는 공개 상세 화면 안내문까지 보고 판단한다 (core/classify.js)
   function myShape(p) {
@@ -557,7 +585,7 @@
   function mySessions(from, to) {
     if (!mine?.ok) return [];
     const out = [];
-    for (const p of mine.data.programs) {
+    for (const p of myPrograms()) {
       const ss = myShape(p)?.sessions || p.sessions;
       for (const s of ss) {
         const st = new Date(s.start);
@@ -583,7 +611,7 @@
   function programEnds() {
     if (!mine?.ok) return [];
     const out = [];
-    for (const p of mine.data.programs) {
+    for (const p of myPrograms()) {
       const ss = myShape(p)?.sessions || p.sessions;
       for (const s of ss) if (["long", "period", "online", "open"].includes(s.kind) && s.end) out.push({ p, s, due: new Date(s.end).toISOString() });
     }
@@ -1596,7 +1624,9 @@
   userMap("hide", HIDE_KEY).then((v) => {
     // 오래된 기록 정리 (120일). 키 수 한도(512)를 생각해 많아도 최근 300개만 남긴다
     const old = Date.now() - 120 * 86400000;
-    const keep = Object.entries(v).filter(([, t]) => t >= old).sort((a, b) => b[1] - a[1]).slice(0, 300);
+    // 내 비교과 전체 숨기기(prog:)는 학기가 길어도 다시 나오지 않게 1년. 학교 목록에서 빠지면 숨긴 목록에서도 저절로 안 보임
+    const yearAgo = Date.now() - 365 * 86400000;
+    const keep = Object.entries(v).filter(([id, t]) => t >= (id.startsWith("prog:") ? yearAgo : old)).sort((a, b) => b[1] - a[1]).slice(0, 300);
     for (const id of Object.keys(v)) if (!keep.some(([k]) => k === id)) userPut("hide", id, null);
     hidden = Object.fromEntries(keep);
     rerender();
@@ -1610,19 +1640,19 @@
     if (on) hidden[id] = Date.now();
     else delete hidden[id];
     userPut("hide", id, on ? hidden[id] : null);
-    renderWeek();
+    rerender();
   }
-  const hideBtn = (id) =>
+  const hideBtn = (id, msg = "숨겼어요. 캘린더·AI에서도 빠져요.", title = "숨기기 (내 크롬 계정에서 모두 적용)") =>
     el("button", {
       class: "hide-btn",
-      title: "숨기기 (내 크롬 계정에서 모두 적용)",
+      title,
       "aria-label": "숨기기",
       text: "×",
       onclick: (e) => {
         e.preventDefault();
         e.stopPropagation();
         setHidden(id, true);
-        showToast("숨겼어요. 캘린더·AI에서도 빠져요.", () => setHidden(id, false));
+        showToast(msg, () => setHidden(id, false));
       },
     });
   let showHiddenList = false;
@@ -1732,14 +1762,14 @@
   }
 
   // 숨긴 항목 되돌리기 (지금 고른 칸의 것만)
-  function hiddenSection(items, nameOf) {
+  function hiddenSection(items, nameOf, noun = "항목") {
     if (!items.length) return null;
     const btn = el("button", {
       class: "hidden-toggle",
-      text: showHiddenList ? `숨긴 항목 ${items.length}개 접기` : `숨긴 항목 ${items.length}개 보기`,
+      text: showHiddenList ? `숨긴 ${noun} ${items.length}개 접기` : `숨긴 ${noun} ${items.length}개 보기`,
       onclick: () => {
         showHiddenList = !showHiddenList;
-        renderWeek();
+        rerender();
       },
     });
     return el("div", { class: "hidden-box" }, [
@@ -2274,6 +2304,7 @@
           el("div", { class: "tc-sub", text: [p.category, p.place || p.department].filter(Boolean).join(" · ") }),
         ]),
         minePoint(p) ? el("span", { class: "badge program", title: "이수하면 받는 포인트 (학교 상세 화면 기준)", text: minePoint(p) }) : null,
+        hideBtn(progHideId(p), "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
       ]),
       el("div", { class: "tc-foot" }, [scheduleLine(p), el("span", { class: "tc-status plain", text: state })]),
     ]);
@@ -2298,6 +2329,7 @@
     const s = p.sessions[0];
     return el("a", { class: "todo quiet", href: p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "info" }, [el("div", { class: "name", text: p.title }), el("div", { class: "sub", text: [periodText(s), p.phase === "wait" ? "시작 대기" : "", minePoint(p) || ""].filter(Boolean).join(" · ") })]),
+      hideBtn(progHideId(p), "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
     ]);
   }
 
@@ -2385,7 +2417,7 @@
   const byNext = (a, b) => new Date(nextSession(a).start) - new Date(nextSession(b).start);
 
   function mineGroups() {
-    const ps = mine?.ok ? mine.data.programs : [];
+    const ps = myPrograms();
     const online = ps.filter(isOnlineOnly);
     const rest = ps.filter((p) => !isOnlineOnly(p));
     return {
@@ -2410,6 +2442,8 @@
     parts.push(secTitle("시작 대기", g.wait.length), g.wait.length ? rows(g.wait.map(myProgramCard)) : placeholder("시작을 기다리는 비교과가 없어요."));
     parts.push(secTitle("진행 중", g.progress.length), g.progress.length ? rows(g.progress.map(myProgramCard)) : placeholder("진행 중인 비교과가 없어요."));
     if (g.online.length) parts.push(secTitle("온라인", g.online.length, "기간 안에 참여"), rows(g.online.map(onlineRow)));
+    const hiddenProgs = myHiddenPrograms().map((p) => ({ id: progHideId(p), p }));
+    if (hiddenProgs.length) parts.push(hiddenSection(hiddenProgs, (x) => x.p.title, "비교과"));
     return parts;
   }
 
@@ -2811,7 +2845,7 @@
     return {
       missing: [!eclass?.ok && "eclass", !programs?.ok && "programs", !mine?.ok && "mine", !week?.ok && "timetable"].filter(Boolean),
       eclassItems: eclass?.ok ? eclass.data.items.filter((it) => !isHidden(it.id)) : [], // 숨긴 항목은 AI 답에서도 뺀다
-      myPrograms: mine?.ok ? { ...mine.data, surveys: mine.data.surveys.filter((p) => !isHidden(`survey:${p.id}`)) } : null,
+      myPrograms: mine?.ok ? { ...mine.data, programs: myPrograms(), surveys: mine.data.surveys.filter((p) => !isHidden(`survey:${p.id}`)) } : null,
       openPrograms: programs?.ok ? programs.data : [],
       timetable: week?.ok ? week.items : [],
       ...aiExtras(),

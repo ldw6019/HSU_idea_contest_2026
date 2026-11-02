@@ -308,6 +308,27 @@ export function pollAnswered(html) {
   return choices.some((i) => i.hasAttribute("checked")) || texts.some((t) => (t.tagName === "TEXTAREA" ? t.textContent : t.getAttribute("value") || "").trim() !== "");
 }
 
+/** 목록에 같은 프로그램이 여러 줄이면 하나로 (회차는 합치고, 한 줄이라도 진행 중이면 진행 중) */
+export function mergeSameProgram(list) {
+  const byKey = new Map();
+  for (const p of list) {
+    const k = p.id || p.url || p.title;
+    const q = byKey.get(k);
+    if (!q) {
+      byKey.set(k, { ...p, sessions: p.sessions ? [...p.sessions] : p.sessions });
+      continue;
+    }
+    if (p.phase === "progress") q.phase = "progress";
+    if (q.firstAt && p.firstAt && new Date(p.firstAt) < new Date(q.firstAt)) q.firstAt = p.firstAt;
+    if (Array.isArray(q.sessions) && Array.isArray(p.sessions)) {
+      const have = new Set(q.sessions.map((s) => `${s.start}|${s.end}`));
+      for (const s of p.sessions) if (!have.has(`${s.start}|${s.end}`)) q.sessions.push(s), have.add(`${s.start}|${s.end}`);
+      q.sessions.sort((a, b) => new Date(a.start) - new Date(b.start));
+    }
+  }
+  return [...byKey.values()];
+}
+
 /**
  * 내 비교과 전체: 포인트, 시작 대기·진행 중(회차 일정 포함), 설문을 아직 안 낸 종료 프로그램(종료 목록 1쪽)
  * @param {(url: string) => Promise<string>} getText
@@ -317,7 +338,9 @@ export async function fetchMyPrograms(getText, now = new Date()) {
   const [wait, progress, done, points] = await Promise.all([list("wait"), list("progress"), list("complete"), fetchPoints(getText)]);
 
   // 시작 대기·진행 중: 프로그램 화면에서 내 회차 일정을 읽는다 (동시 2개)
-  const active = [...wait.map((p) => ({ ...p, phase: "wait" })), ...progress.map((p) => ({ ...p, phase: "progress" }))];
+  // 11/2 사용자: 한 프로그램의 회차 4개를 따로 신청하면 목록에 4줄(같은 프로그램)이 나오고, 프로그램 화면은 4줄 모두 내 회차 4개를 보여 줌
+  //  → 같은 프로그램은 한 번만 읽는다 (캘린더에 4×4로 나오던 것, 학교 요청도 줄어듦)
+  const active = mergeSameProgram([...wait.map((p) => ({ ...p, phase: "wait" })), ...progress.map((p) => ({ ...p, phase: "progress" }))]);
   const details = await runLimited(active.map((p) => () => (p.url ? getText(p.url).then(parseMySessions) : [])), 2);
   const programs = active
     .map((p, i) => {

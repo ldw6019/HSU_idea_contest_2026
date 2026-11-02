@@ -79,7 +79,63 @@ await tab("캘린더");
 await page.waitForTimeout(300);
 check("되돌리기 → 캘린더에 다시 보임", cnt(await R.locator(".frame.cal").innerText()) === cnt(calText0));
 
+// 같은 프로그램을 회차별로 신청해 목록에 여러 줄 (시연 데이터: 워크숍 1차·2차 → 2줄) → 카드 1개, 캘린더 회차 중복 없음
+await tab("비교과");
+await page.waitForTimeout(800);
+await R.locator(".seg-btn", { hasText: "내 비교과" }).click();
+await page.waitForTimeout(300);
+check("회차별 신청 프로그램은 카드 1개", (await R.locator(".tcard", { hasText: "학습법 워크숍" }).count()) === 1);
+await tab("캘린더");
+await page.waitForTimeout(300);
+const wsDays = await R.locator(".frame.cal").evaluate((root) => {
+  const names = [...root.querySelectorAll("*")].filter((n) => n.children.length === 0 && /학습법 워크숍/.test(n.textContent));
+  return names.length;
+});
+const calAll = await R.locator(".frame.cal").innerText();
+check("캘린더에 워크숍이 중복 없이 (이번 주 1회)", (calAll.match(/학습법 워크숍/g) || []).length === 1, `${(calAll.match(/학습법 워크숍/g) || []).length}회 / leaf ${wsDays}`);
+
+// 내 비교과 통째로 숨기기 (11/2 사용자: 신청에 떨어진 비교과)
+await tab("비교과");
+await page.waitForTimeout(800);
+await R.locator(".seg-btn", { hasText: "내 비교과" }).click();
+await page.waitForTimeout(300);
+const mineCard = R.locator(".tcard:has(.hide-btn)").first();
+const progName = (await mineCard.locator(".tc-title").innerText()).trim();
+const pk = progName.slice(0, 6);
+await tab("캘린더");
+await page.waitForTimeout(300);
+const calBefore = (await R.locator(".frame.cal").innerText()).split(pk).length - 1;
+await tab("비교과");
+await page.waitForTimeout(300);
+await R.locator(".tcard", { hasText: progName }).locator(".hide-btn").click();
+await page.waitForTimeout(300);
+const listText = await R.locator(".body").innerText();
+check("내 비교과에서 숨기면 목록에서 빠짐", !listText.includes(progName) && /숨긴 비교과 1개 보기/.test(listText), progName);
+await tab("캘린더");
+await page.waitForTimeout(300);
+const calAfter = (await R.locator(".frame.cal").innerText()).split(pk).length - 1;
+check("숨긴 비교과는 캘린더 회차 전부 빠짐", calAfter === 0, `"${pk}" ${calBefore} → ${calAfter}`);
+await tab("이번 주");
+await page.waitForTimeout(300);
+const ps = R.locator(".seg-btn", { hasText: "비교과" }).first();
+if (await ps.count()) await ps.click();
+await page.waitForTimeout(200);
+check("숨긴 비교과는 이번 주에서도 빠짐", !(await R.locator(".body").innerText()).includes(progName));
+await tab("비교과");
+await page.waitForTimeout(300);
+await R.locator(".hidden-toggle", { hasText: "숨긴 비교과" }).click();
+await R.locator(".hidden-box").scrollIntoViewIfNeeded();
+await R.locator("section.panel").screenshot({ path: resolve(root, "tools/shots/e2e-mine-hidden.png") });
+await R.locator(".hidden-row", { hasText: progName }).locator("button").click();
+await page.waitForTimeout(300);
+check("다시 보이기 → 내 비교과에 돌아옴", (await R.locator(".body").innerText()).includes(progName));
+await R.locator(".body").evaluate((e) => (e.scrollTop = 0));
+await R.locator(".tcard", { hasText: progName }).scrollIntoViewIfNeeded();
+await R.locator("section.panel").screenshot({ path: resolve(root, "tools/shots/e2e-mine.png") });
+
 // 공지 → 일정
+await tab("캘린더");
+await page.waitForTimeout(300);
 await R.locator("button.small", { hasText: "+ 일정" }).click();
 await page.waitForTimeout(200);
 await R.locator(".notice-box summary").click();

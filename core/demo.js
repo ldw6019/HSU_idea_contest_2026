@@ -86,6 +86,8 @@ export function buildDemo(now = new Date()) {
   };
   const pages = {};
   for (const k of ["wait", "progress", "complete"]) pages[`/ko/mypage/programs/list/${k}/1`] = listPage(MY[k].map(row));
+  // 11/2: 실제 학교 목록처럼 회차를 따로 신청한 프로그램은 같은 줄이 회차 수만큼 나옴 (워크숍 1차·2차 → 2줄)
+  pages["/ko/mypage/programs/list/wait/1"] = listPage([...MY.wait, MY.wait[0]].map(row));
   for (const x of [...MY.wait, ...MY.progress]) pages[`/ko/mypage/programs/view/${x.id}`] = viewPage(x.sessions);
   for (const x of MY.complete) pages[`/ko/module/eco/@poll/write/${x.id}/9${x.id}`] = `<html><body><form><label><input type="radio" name="q1" ${x.answered ? "checked" : ""}>그렇다</label><label><input type="radio" name="q1">아니다</label></form></body></html>`;
   const semStart = now.getMonth() >= 8 || now.getMonth() < 2 ? new Date(now.getMonth() < 2 ? now.getFullYear() - 1 : now.getFullYear(), 8, 3) : new Date(now.getFullYear(), 2, 3);

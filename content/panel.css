@@ -900,7 +900,7 @@ button.ac-more:hover { text-decoration: underline; }
 .pt-help { font-size: 11px; color: var(--ot-muted); margin-top: 1px; }
 .wl-tabs.legend b { min-width: 64px; }
 
-.toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 10px; max-width: calc(100% - 32px); padding: 9px 12px; border-radius: 10px; background: #1f2937; color: #fff; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2); }
+.toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 5; display: flex; align-items: center; gap: 10px; width: max-content; max-width: calc(100% - 32px); box-sizing: border-box; word-break: keep-all; line-height: 1.45; padding: 9px 12px; border-radius: 10px; background: #1f2937; color: #fff; font-size: 12.5px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.2); }
 .toast[hidden] { display: none; }
 .toast-undo { border: none; background: none; color: #9ec5ff; font: inherit; font-weight: 700; cursor: pointer; padding: 0; white-space: nowrap; }
 .toast-undo[hidden] { display: none; }
