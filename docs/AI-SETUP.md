@@ -12,6 +12,19 @@ HSU Plus의 AI는 이렇게 이어져요.
 - 추천 질문 버튼은 AI를 쓰지 않아요(기본 답변). 직접 쓴 질문만 AI가 답해요.
 - 서버가 꺼졌거나 하루 한도를 넘으면 확장은 자동으로 기본 답변을 보여 줘요.
 
+- 직접 넣는 일정 칸의 **"공지 붙여 넣어 AI로 채우기"**(0.4.1)도 같은 서버(`/v1/extract`)를 써요. 버튼을 누를 때만 보내고, 전화번호·메일·링크는 확장에서 지운 뒤 보내요. 질문과 같은 하루 한도를 써요.
+
+### AI 회사로 간 내용은 어떻게 되나 (11/2 공식 문서 확인)
+우리 서버는 아무것도 저장하지 않아요(횟수·비용 숫자만). 서버가 Anthropic API로 넘긴 내용은 Anthropic 정책을 따라요. 일반 상용 API 계정(별도 계약 없음) 기준:
+- **보관:** API 입력·출력은 받은 뒤 **30일 안에 자동 삭제**. 예외: 이용 정책 위반으로 걸린 경우(최대 2년), 법에 따른 경우, 사용자가 보낸 피드백.
+  ([How long do you store my organization's data?](https://privacy.claude.com/en/articles/7996866-how-long-do-you-store-my-organization-s-data), 2026-07-01)
+- **학습:** 상용 제품(API 포함) 입력·출력은 **기본적으로 학습에 쓰지 않음**. 피드백을 직접 보내거나 따로 허락한 경우만 예외. 우리 서버는 피드백을 보내지 않아요.
+  ([Is my data used for model training?](https://privacy.claude.com/en/articles/7996868-is-my-data-used-for-model-training), 2026-08-18)
+- **"Covered Models"(30일 보관 의무)** 목록에 Haiku 5.5는 **없어요**(2026-09-01 목록: Mythos·Fable 계열). 목록은 바뀔 수 있어요.
+  ([Covered Models](https://support.claude.com/en/articles/15425695-covered-models), [API and data retention](https://platform.claude.com/docs/en/manage-claude/api-and-data-retention))
+- 보고서 문장 예: "질문은 학교 계정과 연결되지 않은 무작위 번호로만 보내며, 우리 서버는 내용을 저장하지 않고, AI 회사(Anthropic)는 상용 API 정책에 따라 학습에 쓰지 않고 30일 안에 삭제한다(2026-11 공식 문서 기준)."
+- 모델을 Gemini 등으로 바꾸면 그 회사 정책을 다시 확인해야 해요. 이 내용은 법률 자문이 아니에요.
+
 > 이 문서의 화면 메뉴 이름은 2026-10 기준이에요. 이름이 조금 달라도 같은 뜻의 메뉴를 찾으면 돼요.
 
 ---

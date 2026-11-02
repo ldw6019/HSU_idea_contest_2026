@@ -202,7 +202,8 @@
     }
     const row = mk("div", "hsup-row");
     const pct = Math.min(100, Math.round((learned / required) * 1000) / 10); // 10/29: 다시 본 시간까지 쌓여도 100%까지만 (패널과 같은 숫자)
-    const b = bar(learned / required, color, `${clock(learned)} / ${clock(required)} (${pct}%)`, state === "live");
+    // 11/2: "46:37 / 41:56"이 본 시간이 영상보다 긴 것처럼 보였음 → 분모가 출석 기준이라는 걸 글로
+    const b = bar(learned / required, color, `출석 기준 ${clock(required)} 중 ${clock(learned)} (${pct}%)`, state === "live");
     b.title = `출석 기준: 영상 길이(${clock(v.lengthSec)})의 90%`;
     row.appendChild(b);
 

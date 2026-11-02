@@ -54,6 +54,26 @@ mockOut = { intent: "this_month", picks: [], message: "이번 달은 {t1}부터 
 r = await call("/v1/ask", { question: "이번 달 할 일", context }, { install: "aaaaaaaaaaaaaaaa3333" });
 check("모르는 intent + 항목 번호 → 일정 답", r.body.intent === "week" && r.body.picks.length === 1, JSON.stringify(r.body));
 
+// 3-3) 번호 뒤에 같은 이름을 또 쓰면 지움 (11/2)
+{
+  const { dropRepeatedNames } = await import("../src/index.js");
+  const ctx2 = { tasks: [{ id: "t1", title: "9주차 온라인 강의", course: "데이터베이스" }], myPrograms: [{ id: "p2", title: "진로 멘토링" }] };
+  check("이름 반복 지움", dropRepeatedNames("{p2} 진로 멘토링이 11/27까지예요.", ctx2) === "{p2}이 11/27까지예요.", dropRepeatedNames("{p2} 진로 멘토링이 11/27까지예요.", ctx2));
+  check("과목 이름 반복 지움", dropRepeatedNames("{t1} 데이터베이스 강의는 진도 0%예요.", ctx2) === "{t1} 강의는 진도 0%예요.");
+  check("다른 말은 그대로", dropRepeatedNames("{t1}부터 하세요.", ctx2) === "{t1}부터 하세요.");
+}
+// 3-4) 공지 → 일정 (11/2): 형식 맞는 것만, 링크 제목 버림, 날짜순, 저장 안 함
+mockOut = { events: [
+  { title: "동아리 정기 회의", date: "2026-11-12", start: "19:00", end: "21:00", place: "상상관 302" },
+  { title: "OT", date: "2026-11-05", start: "25:00" },
+  { title: "www.example.com 들어가기", date: "2026-11-06" },
+  { title: "날짜 없음", date: "다음 주" },
+] };
+r = await call("/v1/extract", { text: "다음 주 목요일 저녁 7시 상상관 302에서 동아리 정기 회의 있어요", today: "2026-11-02(월)" }, { install: "cccccccccccccccc4444" });
+check("공지 → 일정 200", r.status === 200, JSON.stringify(r.body));
+check("형식 맞는 것만·날짜순", r.body.events?.map((e) => e.title).join("|") === "OT|동아리 정기 회의", JSON.stringify(r.body.events));
+check("틀린 시각은 비움", r.body.events?.[0]?.start === null);
+check("오늘 날짜 없으면 거절", (await call("/v1/extract", { text: "내일 회의", today: "" }, { install: "cccccccccccccccc4444" })).status === 400);
 // 3-2) intent는 일정인데 안내 문구에 코드·영어 번역을 끼워 넣으면 버림
 mockOut = { intent: "today", picks: [{ id: "t1" }], message: "def sort(a): return sorted(a)" };
 r = await call("/v1/ask", { question: "오늘 뭐 해?", context }, { install: "aaaaaaaaaaaaaaaa1111" });

@@ -46,6 +46,19 @@ export function detectIntent(q) {
  * 서버에 보내기 전에 막을 뻔한 범위 밖 질문 (코드·번역·과제 정답 등). 보내지 않으니 비용도 0 (10/20)
  * detectIntent의 "out"보다 좁게: "설문 답 안 한 거"처럼 일정 질문까지 막지 않도록 확실한 말만
  */
+// 11/2 심사위원 관점 검토: "요즘 우울하고 그만두고 싶어"에 "답하기 어려워요"만 나옴 → 마음이 힘들다는 말에는 학교 상담 창구를 알려 줌.
+//  이런 질문은 AI 서버로 보내지 않는다(민감한 내용). 진단·상담을 대신하지 않고 연결만.
+export const COUNSEL_URL = "https://hansung.ac.kr/lifecounseling/2603/subview.do"; // 학생생활상담센터 소개
+export function distressReply(q) {
+  const s = String(q || "");
+  if (/(자살|죽고\s*싶|죽어\s*버리|사라지고\s*싶|살기\s*싫|자해)/.test(s))
+    return { text: "많이 힘든 상황인 것 같아요. 혼자 버티지 말고 지금 바로 이야기할 수 있는 곳에 연락해 주세요. 자살예방 상담전화는 109(24시간)이고, 학교 학생생활상담센터에서도 상담을 받을 수 있어요.", urgent: true };
+  // 가벼운 말("과제 너무 힘들어 언제까지야?")은 일정 질문이면 그대로 일정으로 답한다
+  if (/(우울|불안해|힘들어|지쳤|그만두고\s*싶|자퇴|휴학하고\s*싶|외로워|무기력|번아웃|스트레스)/.test(s) && !/(언제|마감|과제|강의|퀴즈|비교과|일정|시험|포인트|신청|몇)/.test(s))
+    return { text: "요즘 많이 지치셨나 봐요. 일정 정리는 제가 도울 수 있지만, 마음이 힘들 때는 학교 학생생활상담센터에서 이야기를 나눠 보는 것도 좋아요." };
+  return null;
+}
+
 export function clearlyOutOfScope(q) {
   const s = sanitizeQuestion(q);
   // "이번 주 일정 짜 줘"처럼 일정을 짜 달라는 건 범위 안
@@ -71,6 +84,9 @@ const isMidnight = (d) => d.getHours() === 0 && d.getMinutes() === 0;
 const dueDay = (d) => (isMidnight(d) ? new Date(d.getTime() - 60000) : d);
 const day0 = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
 export const daysLeft = (iso, now = new Date()) => Math.round((day0(dueDay(new Date(iso))) - day0(now)) / 86400000);
+// 11/2: 시작 날짜에는 "0시 = 전날 밤" 규칙을 쓰면 안 됨 (0시에 시작하는 기간·종일 일정이 하루 앞당겨 보였음: 화면 10/13 vs AI 10/12)
+const startDays = (iso, now = new Date()) => Math.round((day0(new Date(iso)) - day0(now)) / 86400000);
+const startDay = (iso) => { const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()}(${DAY[d.getDay()]})`; };
 const DAY = ["일", "월", "화", "수", "목", "금", "토"];
 const pad = (n) => String(n).padStart(2, "0");
 const hm = (d) => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
@@ -98,15 +114,15 @@ export function rangesOf(now = new Date()) {
   return { thisWeek: `${md(mon)}~${md(plus(6))}`, nextWeek: `${md(plus(7))}~${md(plus(13))}`, weekAfterNext: `${md(plus(14))}~${md(plus(20))}`, thisMonth: `${md(mStart)}~${md(mEnd)}`, nextMonth: `${md(nStart)}~${md(nEnd)}` };
 }
 /** 날짜가 어느 주인지: "이번 주" / "다음 주" / "그 뒤" (0시 마감은 전날로) */
-export function weekOf(iso, now = new Date()) {
-  const d = new Date(day0(dueDay(new Date(iso))));
+export function weekOf(iso, now = new Date(), isStart = false) {
+  const d = new Date(day0(isStart ? new Date(iso) : dueDay(new Date(iso))));
   const diff = Math.round((d - mondayOf(now)) / 86400000);
   return diff < 0 ? "지난 주" : diff < 7 ? "이번 주" : diff < 14 ? "다음 주" : diff < 21 ? "다다음 주" : "그 뒤";
 }
 
 /** 날짜가 어느 달인지: "이번 달" / "다음 달" / "그 뒤" (0시 마감은 전날로). 10/29 비교 시험: 주 표시만 있으니 "다음 달" 질문에 11/2 마감을 빠뜨림 */
-export function monthOf(iso, now = new Date()) {
-  const d = dueDay(new Date(iso));
+export function monthOf(iso, now = new Date(), isStart = false) {
+  const d = isStart ? new Date(iso) : dueDay(new Date(iso));
   const diff = (d.getFullYear() - now.getFullYear()) * 12 + d.getMonth() - now.getMonth();
   return diff < 0 ? "지난 달" : diff === 0 ? "이번 달" : diff === 1 ? "다음 달" : "그 뒤";
 }
@@ -167,11 +183,11 @@ export function buildContext(
       const s = nx ? { kind: "exact", start: nx.start, end: nx.end, weekly: nx.weekly } : p.sessions.find((x) => x.kind === "exact") || p.sessions[0];
       const entry = { id, title: cut(p.title), state: p.phase === "wait" ? "시작 대기" : "진행 중", schedule: nx?.weekly ? "weekly" : s?.kind || "open" };
       if (s?.kind === "exact") {
-        entry.next = `${label(s.start).replace(/ .*/, "")} ${hm(new Date(s.start))}-${hm(new Date(s.end))}`;
-        entry.dday = daysLeft(s.start, now);
-        entry.week = weekOf(s.start, now);
-        entry.month = monthOf(s.start, now);
-      } else if (s?.start) entry.period = `${label(s.start).replace(/ .*/, "")} ~ ${s.end ? label(s.end) : ""}`;
+        entry.next = `${startDay(s.start)} ${hm(new Date(s.start))}-${hm(new Date(s.end))}`;
+        entry.dday = startDays(s.start, now);
+        entry.week = weekOf(s.start, now, true);
+        entry.month = monthOf(s.start, now, true);
+      } else if (s?.start) entry.period = `${startDay(s.start)} ~ ${s.end ? label(s.end) : ""}`;
       if (myEnds[p.id]) {
         entry.endsAt = label(myEnds[p.id]);
         entry.endDday = daysLeft(myEnds[p.id], now);
@@ -191,13 +207,13 @@ export function buildContext(
 
   // 직접 넣은 일정: 제목·날짜만 (장소·메모는 보내지 않음), 오늘부터 14일 안, 최대 10개
   events
-    .filter((e) => new Date(e.end || e.start) >= new Date(day0(now)) && daysLeft(e.start, now) <= 14)
+    .filter((e) => new Date(e.end || e.start) >= new Date(day0(now)) && startDays(e.start, now) <= 14)
     .sort((a, b) => new Date(a.start) - new Date(b.start))
     .slice(0, 10)
     .forEach((e, i) => {
       const id = `e${i + 1}`;
       const st = new Date(e.start);
-      ctx.myEvents.push({ id, title: cut(e.title, 40), when: e.allDay ? label(e.start).replace(/ .*/, "") : `${label(e.start).replace(/ .*/, "")} ${hm(st)}`, dday: daysLeft(e.start, now), week: weekOf(e.start, now), month: monthOf(e.start, now) });
+      ctx.myEvents.push({ id, title: cut(e.title, 40), when: e.allDay ? startDay(e.start) : `${startDay(e.start)} ${hm(st)}`, dday: startDays(e.start, now), week: weekOf(e.start, now, true), month: monthOf(e.start, now, true) });
       refs.set(id, { kind: "event", item: e });
     });
   // 학교 학사일정 (공개): 진행 중이거나 14일 안에 시작하는 신청·시험, 최대 8개
@@ -232,11 +248,12 @@ export function buildContext(
         entry.when = info.when; // 수업과 안 겹치는 회차 (매주 회차면 "매주 수 10:00–13:00 (11/4~11/25)")
         entry.clashWithClass = false;
       } else if (exact) {
-        entry.when = `${label(ex.start).replace(/ .*/, "")} ${hm(new Date(ex.start))}-${hm(new Date(ex.end))}`;
+        entry.when = `${startDay(ex.start)} ${hm(new Date(ex.start))}-${hm(new Date(ex.end))}`;
         entry.clashWithClass = info ? !info.free : clashes(slots, ex.start, ex.end);
-        entry.week = weekOf(ex.start, now);
-        entry.month = monthOf(ex.start, now);
-      } else if (it.start) entry.period = `${label(it.start).replace(/ .*/, "")} ~ ${it.end ? label(it.end).replace(/ .*/, "") : ""}`;
+        entry.week = weekOf(ex.start, now, true);
+        entry.month = monthOf(ex.start, now, true);
+      } else if (it.start) entry.period = `${startDay(it.start)} ~ ${it.end ? label(it.end).replace(/ .*/, "") : ""}`;
+      if (info && info.free === false) entry.clashWithClass = true; // 11/2: 여러 날 행사·신청한 비교과와의 겹침도 (화면 판단과 같게)
       ctx.openPrograms.push(entry);
       refs.set(id, { kind: "open", item: it, exact });
     });
@@ -345,7 +362,8 @@ function answerFor(intent, c, now) {
     const sem = c.points.thisSemester;
     const semText = sem ? ` 이번 학기 인정은 ${sem.recognized}/${sem.cap}점${sem.roomLeft > 0 ? `, ${sem.roomLeft}점 더 모으면 이번 학기에 바로 인정돼요` : "으로 다 찼고, 더 모으면 다음 학기로 넘어가요"}.` : "";
     if (need === 0) return { text: `졸업 인정 포인트를 이미 다 채웠어요.${sem ? ` 이번 학기에 ${sem.earned}점 모았어요.` : ""}`, picks: [] };
-    const good = c.openPrograms.filter((o) => o.point && !o.clashWithClass).sort((a, b) => b.point - a.point || a.applyDday - b.applyDday);
+    // 11/2: 상담 프로그램은 포인트 순 추천에서 뺀다 (필요한 학생의 자리를 포인트 목적 신청이 차지하지 않게)
+    const good = c.openPrograms.filter((o) => o.point && !o.clashWithClass && o.category !== "consult" && !/상담/.test(o.title)).sort((a, b) => b.point - a.point || a.applyDday - b.applyDday);
     return {
       text: `졸업까지 ${need}점 남았어요.${semText}${good.length ? " 지금 신청할 수 있는 것 중 포인트 높은 순이에요." : ""}`,
       picks: good.slice(0, 5).map((o) => ({ id: o.id, reason: null })), // 10/29: 포인트·D-day는 카드 배지에 이미 있어서 아랫줄은 일정으로
@@ -407,6 +425,36 @@ export async function askRemote(endpoint, installId, question, context, { timeou
     const data = await res.json().catch(() => ({}));
     if (!res.ok) return { ok: false, status: res.status, reason: data.reason || data.error || null, field: data.field || null };
     return { ok: true, ...data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// ---------- 공지 → 일정 (11/2) ----------
+/** 보내기 전에 전화번호·메일·링크는 지운다 (일정 뽑기에 필요 없고, 남의 연락처일 수 있음) */
+export function scrubNotice(text) {
+  return String(text || "")
+    .normalize("NFC")
+    .replace(/https?:\/\/\S+|www\.\S+/gi, "[링크]")
+    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[메일]")
+    .replace(/\b0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}\b/g, "[전화]")
+    .replace(/[ \t]+/g, " ")
+    .trim()
+    .slice(0, 1500);
+}
+export async function extractRemote(endpoint, installId, text, today, { timeoutMs = 20000 } = {}) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    const res = await fetch(`${endpoint.replace(/\/$/, "")}/v1/extract`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-hsup-install": installId },
+      body: JSON.stringify({ text: scrubNotice(text), today }),
+      signal: ctrl.signal,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) return { ok: false, status: res.status, reason: data.reason || data.error || null };
+    return { ok: true, events: Array.isArray(data.events) ? data.events : [] };
   } finally {
     clearTimeout(timer);
   }

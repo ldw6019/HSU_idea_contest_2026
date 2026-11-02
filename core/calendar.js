@@ -22,10 +22,22 @@ export function weeklySlots(classes) {
 export function clashes(slots, start, end) {
   const s = new Date(start);
   const e = new Date(end || start);
-  if (s.toDateString() !== e.toDateString()) return []; // 여러 날 일정은 따지지 않음
-  const a = minutes(s);
-  const b = Math.max(minutes(e), a + 1);
-  return slots.filter((x) => x.day === s.getDay() && x.from < b && a < x.to);
+  if (s.toDateString() === e.toDateString()) {
+    const a = minutes(s);
+    const b = Math.max(minutes(e), a + 1);
+    return slots.filter((x) => x.day === s.getDay() && x.from < b && a < x.to);
+  }
+  // 11/2: 여러 날 이어지는 행사(예: 목 10:00 ~ 금 18:00 해커톤)도 날마다 따짐 — 첫날은 시작 시각부터, 마지막 날은 끝 시각까지, 사이는 하루 종일
+  if (e - s > 14 * 86400000) return []; // 2주 넘는 기간형은 겹침을 따지지 않음
+  const out = new Set();
+  for (let d = new Date(s.getFullYear(), s.getMonth(), s.getDate()); d <= e; d.setDate(d.getDate() + 1)) {
+    const first = d.toDateString() === s.toDateString();
+    const last = d.toDateString() === e.toDateString();
+    const a = first ? minutes(s) : 0;
+    const b = last ? Math.max(minutes(e), a + 1) : 24 * 60;
+    for (const x of slots) if (x.day === d.getDay() && x.from < b && a < x.to) out.add(x);
+  }
+  return [...out];
 }
 
 /** 매주 일정(요일, "HH:MM"~"HH:MM")이 수업과 겹치는지 */
@@ -102,6 +114,8 @@ export function buildIcs(events, now = new Date()) {
     const desc = [ev.memo, ev.url].filter(Boolean).join("\n");
     if (desc) lines.push(`DESCRIPTION:${icsEscape(desc)}`);
     if (ev.url) lines.push(`URL:${ev.url}`);
+    // 11/2: 마감은 하루 전에 알림 (캘린더 앱이 지원하면)
+    if (ev.alarmBefore) lines.push("BEGIN:VALARM", "ACTION:DISPLAY", `DESCRIPTION:${icsEscape(ev.title)}`, `TRIGGER:-${ev.alarmBefore}`, "END:VALARM");
     lines.push("END:VEVENT");
   }
   lines.push("END:VCALENDAR");

@@ -6,7 +6,7 @@ import { getOrFetch, clearAll, TTL } from "./core/cache.js";
 import { toPlainError } from "./core/errors.js";
 import { fetchTimetable } from "./adapters/info.js";
 import { AI_ENDPOINT } from "./core/config.js";
-import { askRemote } from "./core/ai.js";
+import { askRemote, extractRemote } from "./core/ai.js";
 
 const SITES = {
   hsportal: {
@@ -122,12 +122,23 @@ async function aiAsk({ question, context }) {
   }
 }
 
+// 11/2: 붙여 넣은 공지 → 일정 (학생이 버튼을 누를 때만, 서버는 저장하지 않음)
+async function aiExtract({ text, today }) {
+  if (!AI_ENDPOINT) return { ok: false, status: 0, reason: "off" };
+  try {
+    return await extractRemote(AI_ENDPOINT, await installId(), text, today);
+  } catch (err) {
+    return { ok: false, status: 0, reason: err?.name === "AbortError" ? "timeout" : "network" };
+  }
+}
+
 const HANDLERS = {
   fetchText: (msg) => fetchText(msg),
   checkLogin: () => Promise.all(Object.keys(SITES).map(checkSite)),
   getTimetable: (msg) => getTimetable(msg),
   clearCache: () => clearAll(),
   aiAsk: (msg) => aiAsk(msg),
+  aiExtract: (msg) => aiExtract(msg),
 };
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {

@@ -53,7 +53,12 @@ export async function fetchAcademicCalendar(getText, now = new Date()) {
   const all = [];
   for (const year of years) all.push(...parseYearSchedule(await getText(`${BASE}/schdulMng/hansung/39/yearSchdul.do?year=${year}`)));
   if (!all.length) throw new Error("학사일정을 읽지 못했어요");
-  return all;
+  // 11/2: 11·12월엔 두 해를 읽는데, 같은 일정이 두 번 들어오면 한 번만 (두 페이지가 겹치는 기간을 함께 싣는 경우)
+  const seen = new Set();
+  return all.filter((a) => {
+    const k = `${a.title}|${a.start}|${a.end}`;
+    return !seen.has(k) && seen.add(k);
+  });
 }
 
 export const ACADEMIC_URL = `${BASE}/hansung/6096/subview.do`;

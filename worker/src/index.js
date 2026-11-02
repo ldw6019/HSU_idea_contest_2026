@@ -14,12 +14,13 @@
 
 import { callModel, errorCode } from "./providers.js";
 import { D1Store, MemoryStore } from "./store.js";
-import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATEGORIES } from "./prompts.js";
+import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATEGORIES, EXTRACT_SYSTEM, EXTRACT_TOOL } from "./prompts.js";
 
 const LIMITS = {
   questionChars: 200,
   askBodyBytes: 32000, // 10/20: 16,000이면 실제 계정(비교과 30·할 일 40) 정보가 넘쳐 거절됐음. 확장도 14,000자로 맞춰 보냄
   classifyChars: 8000,
+  extractChars: 1500, // 11/2: 붙여 넣은 공지 글자 수
   titleChars: 120,
   maxTasks: 40,
   maxPrograms: 30,
@@ -119,6 +120,17 @@ export function dropLinkSentences(message) {
  *  message: 250자, 없는 번호 {t9}는 지움, 줄바꿈·글머리표 정리. picks = 문장에 나온 번호 순서(최대 8)
  *  예전 모양(picks 배열)으로 와도 받아 줌
  */
+// 11/2: "{p2} 진로 멘토링이"처럼 번호 바로 뒤에 같은 이름을 또 쓰면 화면에 이름이 두 번 보임 → 뒤의 이름을 지움
+export function dropRepeatedNames(message, context) {
+  const names = new Map();
+  for (const k of ["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"])
+    for (const x of context[k] || []) names.set(x.id, [x.title, x.course].filter((t) => typeof t === "string" && t.trim().length >= 2).map((t) => t.trim()));
+  return message.replace(/\{([a-z]\d{1,3})\}(\s*)([^{]*)/g, (all, id, sp, rest) => {
+    for (const n of (names.get(id) || []).sort((a, b) => b.length - a.length)) if (rest.startsWith(n)) return `{${id}}${rest.slice(n.length)}`;
+    return all;
+  });
+}
+
 export function cleanAnswer(out, context) {
   const ids = new Set(["tasks", "myPrograms", "surveys", "myEvents", "academic", "openPrograms"].flatMap((k) => (context[k] || []).map((x) => x.id)));
   // 목록에 없는 intent는 범위 밖으로 본다. 단, 문장이 실제 항목 번호({t1} 등)로 일정을 말하고 있으면 일정 답으로 살린다
@@ -132,6 +144,7 @@ export function cleanAnswer(out, context) {
     .replace(/\s*[\r\n]+\s*[-•·*]?\s*/g, " ")
     .replace(/\s{2,}/g, " ")
     .trim();
+  message = dropRepeatedNames(message, context);
   if (message.length > 250) message = message.slice(0, 250).replace(/\{[a-z]?\d*$/, "").trimEnd() + "…";
   message = dropLinkSentences(message);
   const seen = new Set();
@@ -144,6 +157,24 @@ export function cleanAnswer(out, context) {
   // 학생 정보에 없는 날짜를 지어내면 문장을 버리고 항목 칩만 (날짜는 칩의 D-day가 정확)
   else if (inventedDates(message, context).length) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요.";
   return { intent, picks, message };
+}
+
+/** 공지에서 뽑은 일정 다듬기: 형식이 맞는 것만, 최대 5개 */
+export function cleanExtract(out) {
+  const okDate = (d) => /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/.test(d || "");
+  const okTime = (t) => /^([01]\d|2[0-3]):[0-5]\d$/.test(t || "");
+  const str = (x, n) => (typeof x === "string" ? x.replace(/\s+/g, " ").trim().slice(0, n) : "");
+  const events = (Array.isArray(out?.events) ? out.events : [])
+    .filter((e) => e && okDate(e.date) && str(e.title, 30) && !LINK.test(e.title))
+    .slice(0, 5)
+    .map((e) => {
+      const start = okTime(e.start) ? e.start : null;
+      const end = start && okTime(e.end) && e.end > start ? e.end : null;
+      const place = str(e.place, 30);
+      return { title: str(e.title, 30), date: e.date, start, end, place: place && !LINK.test(place) ? place : null };
+    })
+    .sort((a, b) => (a.date + (a.start || "")).localeCompare(b.date + (b.start || "")));
+  return { events };
 }
 
 function cleanClassify(out) {
@@ -214,6 +245,25 @@ export async function handle(req, env, { store }) {
       // colo = 이 요청을 처리한 Cloudflare 데이터센터(예: ICN 서울, NRT 도쿄, HKG 홍콩). 지역 차단 확인용
       console.log(JSON.stringify({ ev: "ask_model_error", code, status: err?.status || null, detail: err?.detail || null, info: err?.info || err?.message || null, colo: req.cf?.colo || null }));
       return json(502, { error: "model", reason: code, mode: "template" }, c.headers);
+    }
+  }
+
+  // 11/2: 공지 → 일정 (학생이 붙여 넣은 글, 저장하지 않음). 질문과 같은 하루 한도를 쓴다
+  if (url.pathname === "/v1/extract") {
+    const text = typeof body.text === "string" ? body.text.normalize("NFC").trim() : "";
+    const today = typeof body.today === "string" && /^\d{4}-\d{2}-\d{2}\(.\)$/.test(body.today) ? body.today : null;
+    if (text.length < 5 || text.length > LIMITS.extractChars || !today) return json(400, { error: "invalid" }, c.headers);
+    const q = await checkQuota(store, env, "ask", install);
+    if (!q.ok) return json(429, { error: "limit", reason: q.reason }, c.headers);
+    try {
+      const r = await callModel(env, { system: EXTRACT_SYSTEM, user: `오늘: ${today}\n\n공지:\n${text}`, tool: EXTRACT_TOOL, maxTokens: 500 });
+      await recordCost(store, r);
+      console.log(JSON.stringify({ ev: "extract_ok", colo: req.cf?.colo || null }));
+      return json(200, { ...cleanExtract(r.output), model: r.model }, c.headers);
+    } catch (err) {
+      const code = errorCode(err);
+      console.log(JSON.stringify({ ev: "extract_model_error", code, status: err?.status || null }));
+      return json(502, { error: "model", reason: code }, c.headers);
     }
   }
 
