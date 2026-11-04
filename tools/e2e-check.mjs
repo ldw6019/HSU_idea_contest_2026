@@ -55,7 +55,7 @@ const progSeg = R.locator(".seg-btn", { hasText: "비교과" }).first();
 if (await progSeg.count()) await progSeg.click();
 await page.waitForTimeout(300);
 // 이번 주 캘린더에 실제로 보이는 비교과 회차 하나를 골라 숨김
-const cards = R.locator(".tcard:has(.hide-btn)");
+const cards = R.locator('a.tcard[href*="hsportal"]:has(.hide-btn)'); // 비교과 회차 카드만 (직접 넣은 일정은 숨겨도 캘린더엔 남음)
 let row = null, rowName = "";
 for (let i = 0; i < (await cards.count()); i++) {
   const t = ((await cards.nth(i).locator(".tc-title").first().innerText().catch(() => "")) || "").trim();

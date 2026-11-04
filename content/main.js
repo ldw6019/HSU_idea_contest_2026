@@ -746,9 +746,9 @@
     ];
     for (const r of known) sites.push(siteRow(r.name, r.loggedIn, r.loginUrl));
     const missing = known.filter((r) => r.loggedIn === false).length + (conn && !conn.eclass ? 1 : 0);
-    const step = (n, title, extra) => el("div", { class: "wl-sec" }, [el("span", { class: "wl-num", text: String(n) }), el("span", { text: title }), extra || null]);
+    const step = (n, title, extra) => el("div", { class: "wl-sec" }, [el("span", { class: "wl-num", text: `${n}.` }), el("span", { text: title }), extra || null]);
     const tabCard = (t, d) => el("div", { class: "wl-tab" }, [el("b", { text: t }), el("span", { text: d })]);
-    const promise = (t) => el("li", {}, [icon("check"), el("span", { text: t })]);
+    const promise = (t) => el("li", { text: t });
     return el("div", { class: "welcome" }, [
       el("div", { class: "wl-head" }, [logoMark(), el("div", {}, [el("b", { text: "HSU Plus를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
       step(1, "세 사이트 로그인 확인", missing ? el("span", { class: "wl-sec-tag ng", text: `${missing}곳 로그인 필요` }) : conn ? el("span", { class: "wl-sec-tag ok", text: "모두 연결됨" }) : null),
@@ -1730,7 +1730,7 @@
     const { p, s } = x;
     const st = new Date(s.start);
     const days = daysLeft(s.start);
-    return el("a", { class: `tcard r${riskTier(s.start)}`, href: p.url, target: "_blank", rel: "noopener" }, [
+    return dateCol(el("a", { class: `tcard r${riskTier(s.start)}`, href: p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [s.name && s.name !== p.title ? s.name : null, p.place || p.department].filter(Boolean).join(" · ") })]),
         hideBtn(x.id),
@@ -1743,13 +1743,13 @@
         ]),
         el("span", { class: "tc-status plain", text: `${x.weekly ? "매주 · " : ""}${p.phase === "progress" ? "진행 중" : "시작 대기"}` }), // 10/30: 내 비교과 탭과 같은 이름으로
       ]),
-    ]);
+    ]));
   }
   // 직접 넣은 일정 카드 (누르면 고치기)
   function eventCard(x) {
     const { ev, tm } = x;
     const days = daysLeft(tm.start.toISOString());
-    return el("div", { class: `tcard r${riskTier(tm.start.toISOString())}` }, [
+    return dateCol(el("div", { class: `tcard r${riskTier(tm.start.toISOString())}` }, [
       el("button", { class: "tc-main tc-toggle", onclick: () => editEvent(x.evId) }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: ev.t }), el("div", { class: "tc-sub", text: [ev.p, ev.n].filter(Boolean).join(" · ") || "직접 넣은 일정" })]),
         hideBtn(x.id),
@@ -1762,12 +1762,12 @@
         ]),
         el("span", { class: "tc-status plain", text: "내 일정" }),
       ]),
-    ]);
+    ]));
   }
   // 기간형 내 비교과의 끝 (온라인 수강·제출 등)
   function programEndCard(x) {
     const days = daysLeft(x.due);
-    return el("a", { class: `tcard r${riskTier(x.due)}`, href: x.p.url, target: "_blank", rel: "noopener" }, [
+    return dateCol(el("a", { class: `tcard r${riskTier(x.due)}`, href: x.p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: x.p.title }), el("div", { class: "tc-sub", text: [x.p.category, x.p.place].filter(Boolean).join(" · ") })]),
         hideBtn(x.id),
@@ -1776,7 +1776,7 @@
         el("span", { class: "dline" }, [icon("clock"), el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(x.due)}`, text: days <= 0 ? "오늘" : `D-${days}` }), el("span", { class: "when", text: `${endLabel(x.due)}까지` })]),
         el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: "기간 안에 참여·제출" })]),
       ]),
-    ]);
+    ]));
   }
   const programTodoCard = (x) => (x.kind === "survey" ? surveyCard(x.p, x.id) : x.kind === "event" ? eventCard(x) : x.kind === "pend" ? programEndCard(x) : sessionCard(x));
 
@@ -1936,7 +1936,7 @@
   //  ┃ 제목                         (2개 이상 묶음이면 과목명 + "과제 N개" + ▾)
   //  ┃ 과목명 · 수강률
   //  ┃ ⏱ [D-4] 10/16(금) 23:55            ⚠ 제출 필요     ← 연회색 아래 띠
-  // 왼쪽 라벨 색 = 마감 위험도 5단계(riskTier). 출석이 어려운 강의는 🚨 안내문 + 필요/남은 시간
+  // 왼쪽 날짜 칸 = D-day·날짜 (색은 마감 위험도 5단계 riskTier, 11/4 색 줄 대신). 출석이 어려운 강의는 경고 안내문 + 필요/남은 시간
   // (SVGNS는 맨 위 logoMark 옆에 정의)
   const ICONS = {
     clock: ["M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18z", "M12 7.5V12l3 2"],
@@ -1958,6 +1958,30 @@
   }
   const NEED = { video: "수강 필요", assignment: "제출 필요", quiz: "응시 필요" };
 
+  // 11/4 사용자(디자인 검토 시안 2): 카드 왼쪽 색 줄 대신 날짜 칸. 색 줄과 D-day 칩이 같은 위험도를 두 번 보여 줬음
+  //  아래 띠의 D-day·날짜를 왼쪽 칸으로 옮긴다. D-day가 없는 카드(일정 미정·설문)는 칸에 짧은 말만 두고 날짜 글은 아래에 남긴다
+  function dateCol(card, label = null) {
+    const foot = card.querySelector(":scope > .tc-foot");
+    const dl = foot?.querySelector(":scope > .dline");
+    if (!dl) return card;
+    const chip = dl.querySelector(".dchip");
+    const dday = chip && /^(D-\d+|오늘)$/.test(chip.textContent) ? chip.textContent : null;
+    const parts = [];
+    if (dday) {
+      const when = dl.querySelector(".when")?.textContent || "";
+      const m = /^(\S+?)\s+(\d{1,2}:\d{2}(?:–\d{1,2}:\d{2})?)(.*)$/.exec(when);
+      parts.push(el("b", { text: dday }), el("span", { text: m ? m[1] : when }), m ? el("span", { class: "tm", text: m[2] }) : null, m && m[3].trim() ? el("span", { class: "tm", text: m[3].trim() }) : null);
+      dl.remove();
+    } else {
+      parts.push(el("b", { text: label || (chip?.textContent === "일정 미정" ? "미정" : chip?.textContent || "") }));
+      chip?.remove();
+      dl.querySelector(".ico")?.remove();
+    }
+    card.classList.add("dc");
+    card.prepend(el("div", { class: `tc-date${dday === "오늘" ? " today" : ""}${dday ? "" : " none"}`, title: dl.title || null }, parts));
+    return card;
+  }
+
   // 아래 띠 왼쪽: 시계 + D-day 칩 + 요일 붙은 날짜 (한 줄)
   function dueLine(iso) {
     if (!iso) return el("span", { class: "dline" }, [icon("clock"), el("span", { class: "when", text: "기한 없음" })]);
@@ -1973,7 +1997,7 @@
   const footer = (iso, status, doomed = false) =>
     el("div", { class: "tc-foot" }, [
       dueLine(iso),
-      el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [doomed ? el("span", { class: "siren", text: "🚨" }) : icon("warn"), el("span", { text: status })]),
+      el("span", { class: doomed ? "tc-status doomed" : "tc-status" }, [icon("warn"), el("span", { text: status })]),
     ]);
 
   const pctText = (it) => (it.type === "video" && it.meta?.progressUnknown ? "진도 확인 불가" : it.type === "video" && it.meta?.percent != null ? `진도 ${it.meta.percent}%` : "");
@@ -1987,14 +2011,14 @@
   function taskCard(it) {
     const doomed = absenceCertain(it);
     const tip = doomed ? `출석 인정 기준(영상 길이의 90%, ${mmss(ATTEND_RATIO * it.meta.lengthSec)})까지 남은 시간으로 계산했어요.` : null;
-    return el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: openUrl(it), target: "_blank", rel: "noopener", title: tip }, [
+    return dateCol(el("a", { class: `tcard r${riskTier(it.due)}${doomed ? " doomed" : ""}`, href: openUrl(it), target: "_blank", rel: "noopener", title: tip }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [
           el("div", { class: "tc-title", text: it.title }),
           el("div", { class: "tc-sub", text: [it.course, pctText(it)].filter(Boolean).join(" · ") }),
           doomed
             ? el("div", { class: "tc-alert" }, [
-                el("div", { class: "msg", text: "🚨 지금부터 들어도 출석 인정 시간을 채우기 어려워요" }),
+                el("div", { class: "msg" }, [icon("warn"), el("span", { text: "지금부터 들어도 출석 인정 시간을 채우기 어려워요" })]),
                 el("div", { class: "nums", text: absenceNumbers(it) }),
               ])
             : null,
@@ -2002,7 +2026,7 @@
         hideBtn(it.id),
       ]),
       footer(it.due, doomed ? "출석 어려움" : NEED[it.type] || "확인 필요", doomed),
-    ]);
+    ]));
   }
 
   // 묶음 카드 안의 한 줄 (제목 + 오른쪽 D-day 칩·날짜)
@@ -2012,7 +2036,7 @@
       el("div", { class: "info" }, [
         el("div", { class: "name", text: it.title }),
         pctText(it) ? el("div", { class: "sub", text: pctText(it) }) : null,
-        doomed ? el("div", { class: "sub alert", text: `🚨 출석 어려움 · ${absenceNumbers(it)}` }) : null,
+        doomed ? el("div", { class: "sub alert" }, [icon("warn"), el("span", { text: `출석 어려움 · ${absenceNumbers(it)}` })]) : null,
       ]),
       dueEl(it.due),
       hideBtn(it.id),
@@ -2034,7 +2058,7 @@
       const open = openGroups.has(id);
       const first = list[0];
       const doomedN = list.filter((it) => absenceCertain(it)).length;
-      return el("div", { class: ["tcard", "group", `r${riskTier(first.due)}`, open ? "open" : ""].filter(Boolean).join(" ") }, [
+      return dateCol(el("div", { class: ["tcard", "group", `r${riskTier(first.due)}`, open ? "open" : ""].filter(Boolean).join(" ") }, [
         el(
           "button",
           {
@@ -2052,7 +2076,7 @@
         ),
         open ? el("div", { class: "tc-list" }, list.map(subItem)) : null,
         footer(first.due, doomedN ? `출석 어려움 ${doomedN}` : `${NEED[first.type] || "확인 필요"} ${list.length}`, doomedN > 0),
-      ]);
+      ]));
     });
   }
 
@@ -2340,7 +2364,7 @@
     const s = nextSession(p);
     const tier = s.kind === "exact" ? riskTier(s.start) : 5;
     const state = p.phase === "wait" ? (p.status && p.status !== "참여승인" ? p.status : "시작 대기") : "진행 중";
-    return el("a", { class: `tcard r${tier}`, href: p.url, target: "_blank", rel: "noopener", title: s.name && s.name !== p.title ? s.name : null }, [
+    return dateCol(el("a", { class: `tcard r${tier}`, href: p.url, target: "_blank", rel: "noopener", title: s.name && s.name !== p.title ? s.name : null }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [
           el("div", { class: "tc-title", text: p.title }),
@@ -2350,12 +2374,12 @@
         hideBtn(progHideId(p), "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
       ]),
       el("div", { class: "tc-foot" }, [scheduleLine(p), el("span", { class: "tc-status plain", text: state })]),
-    ]);
+    ]));
   }
 
   function surveyCard(p, hideId = null) {
     const done = /이수\d/.test(p.issuance) ? `이수 ${p.issuance.replace(/^이수\s*\d{4}-0?(\d+)-0?(\d+).*/, "$1/$2")}` : p.issuance;
-    return el("a", { class: "tcard r2", href: p.listUrl, target: "_blank", rel: "noopener", title: "종료된 프로그램 목록에서 설문조사 버튼을 눌러 작성해요" }, [
+    return dateCol(el("a", { class: "tcard r2", href: p.listUrl, target: "_blank", rel: "noopener", title: "종료된 프로그램 목록에서 설문조사 버튼을 눌러 작성해요" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [p.category, done].filter(Boolean).join(" · ") })]),
         hideId ? hideBtn(hideId) : null,
@@ -2364,7 +2388,7 @@
         el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}p 프로그램` : "종료된 프로그램" })]),
         el("span", { class: "tc-status" }, [icon("warn"), el("span", { text: "설문하러 가기 ↗" })]), // 11/2: 누를 수 있는 카드인지 몰랐음
       ]),
-    ]);
+    ]), "설문");
   }
 
   // 온라인: 기간만, 작게

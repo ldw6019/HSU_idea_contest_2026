@@ -135,6 +135,22 @@
     if (!cls.includes("hsup-at") && cls.split(" ").some((c) => LIGHT_INK.has(c))) t.dataset.ink = "light";
     return t;
   };
+  // 11/4: 이모지 대신 경고 그림(SVG). 패널의 경고 아이콘과 같은 모양
+  const warnTag = (cls, text) => {
+    const t = tag(cls, text);
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("style", "width:13px;height:13px;margin-right:4px;vertical-align:-2px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round");
+    for (const d of ["M10.3 4 2.6 17.5A2 2 0 0 0 4.3 20.5h15.4a2 2 0 0 0 1.7-3L13.7 4a2 2 0 0 0-3.4 0z", "M12 9.5v4", "M12 17h.01"]) {
+      const path = document.createElementNS(NS, "path");
+      path.setAttribute("d", d);
+      svg.appendChild(path);
+    }
+    t.prepend(svg);
+    return t;
+  };
   function placePill(li, node) {
     const a = li.querySelector(".activityinstance > a");
     if (a) a.after(node);
@@ -212,7 +228,7 @@
     else if (state === "wait") row.appendChild(tag("hsup-wait", from ? `${from.getMonth() + 1}/${from.getDate()}(${DAY[from.getDay()]}) 열림` : "열리기 전"));
     else if (open) {
       const need = required - learned;
-      if (to && need > (to - now) / 1000) row.appendChild(tag("hsup-r1", "🚨 지금부터 들어도 출석 시간을 채우기 어려워요"));
+      if (to && need > (to - now) / 1000) row.appendChild(warnTag("hsup-r1", "지금부터 들어도 출석 시간을 채우기 어려워요"));
       else if (need > 0) row.appendChild(tag(color, `${dhms(need)} 필요`));
       if (to) row.appendChild(countdown(to.getTime()));
     }
