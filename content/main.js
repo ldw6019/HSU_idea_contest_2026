@@ -198,14 +198,14 @@
   }
   const header = el("header", {}, [
     el("div", { class: "brand" }, [logoMark(), el("strong", { text: "HSU Plus" }), el("span", { class: "brand-sub", text: "한성대 학교생활 한눈에" })]),
-    el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", onclick: () => toggle(false) })]),
+    el("div", { class: "head-actions" }, [wideBtn, el("button", { class: "close", text: "×", title: "닫기", "aria-label": "HSU Plus 닫기", onclick: () => toggle(false) })]),
   ]);
-  const tabBar = el("nav", { class: "tabs" });
+  const tabBar = el("nav", { class: "tabs", role: "tablist", "aria-label": "HSU Plus 탭" });
   const body = el("div", { class: "body" });
   const content = el("div", { class: "content" });
   // 10/23: 내 설정(크롬 동기화) 저장이 실패하면 위쪽에 알림 (전에는 된 것처럼 보이다가 새로고침하면 사라졌음)
   const saveWarnText = el("span");
-  const saveWarn = el("div", { class: "save-warn", hidden: "" }, [saveWarnText, el("button", { class: "close", text: "×", title: "알림 닫기", "aria-label": "알림 닫기", onclick: () => saveWarn.setAttribute("hidden", "") })]);
+  const saveWarn = el("div", { class: "save-warn", role: "alert", hidden: "" }, [saveWarnText, el("button", { class: "close", text: "×", title: "알림 닫기", "aria-label": "알림 닫기", onclick: () => saveWarn.setAttribute("hidden", "") })]);
   function showSaveWarn(msg) {
     saveWarnText.textContent = msg;
     saveWarn.removeAttribute("hidden");
@@ -235,11 +235,25 @@
       ...TABS.map((t) =>
         el("button", {
           class: t.id === current ? "tab active" : "tab",
+          role: "tab",
+          "aria-selected": String(t.id === current),
+          tabindex: t.id === current ? "0" : "-1",
           text: t.label,
           onclick: () => {
             current = t.id;
             renderTabs();
             renderBody();
+            tabBar.querySelector(".tab.active")?.focus({ preventScroll: true }); // 11/6: 다시 그려도 초점이 탭에 남게
+          },
+          // 11/6: 왼쪽·오른쪽 화살표로 탭 옮기기
+          onkeydown: (e) => {
+            if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+            e.preventDefault();
+            const i = TABS.findIndex((x) => x.id === current);
+            current = TABS[(i + (e.key === "ArrowRight" ? 1 : TABS.length - 1)) % TABS.length].id;
+            renderTabs();
+            renderBody();
+            tabBar.querySelector(".tab.active")?.focus({ preventScroll: true });
           },
         })
       )
@@ -750,7 +764,7 @@
     const tabCard = (t, d) => el("div", { class: "wl-tab" }, [el("b", { text: t }), el("span", { text: d })]);
     const promise = (t) => el("li", { text: t });
     return el("div", { class: "welcome" }, [
-      el("div", { class: "wl-head" }, [logoMark(), el("div", {}, [el("b", { text: "HSU Plus를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
+      el("div", { class: "wl-head" }, [logoMark(), el("div", {}, [el("b", { role: "heading", "aria-level": "2", text: "HSU Plus를 시작해요" }), el("p", { text: "e클래스·비교과·종합정보에 흩어진 할 일과 일정을 여기서 한 번에 봐요." })])]),
       step(1, "세 사이트 로그인 확인", missing ? el("span", { class: "wl-sec-tag ng", text: `${missing}곳 로그인 필요` }) : conn ? el("span", { class: "wl-sec-tag ok", text: "모두 연결됨" }) : null),
       el("div", { class: "wl-sites" }, sites),
       missing
@@ -884,13 +898,14 @@
       return el("div", { class: `ac-row${going ? " going" : ""}` }, [
         el("span", { class: `ac-kind k-${a.kind}`, text: a.kind === "exam" ? "시험" : "신청" }),
         el("div", { class: "info" }, [el("div", { class: "name", text: a.title }), el("div", { class: "sub", text: when })]),
-        el("span", { class: going ? "dchip r2" : "dchip", text: chip }),
-        hideBtn(a.id),
+        // 11/6 검토: 진행 중인 신청 기간도 남은 날로 위험도 색 (예전엔 D-20도 늘 주황빨강)
+        el("span", { class: going ? `dchip r${left <= 1 ? 1 : left === 2 ? 2 : left <= 7 ? 3 : left < 14 ? 4 : 5}` : "dchip", text: chip }),
+        hideBtn(a.id, a.title),
       ]);
     };
     return el("div", { class: "ac-box" }, [
       // 이번 주 탭에서는 끄는 스위치·전체 보기 없이 제목만 (10/19 사용자: 여기서 실수로 꺼 버리지 않게. 끄기는 캘린더·설정에서)
-      el("div", { class: "ac-head" }, [el("span", { text: "학사 일정" })]),
+      el("div", { class: "ac-head", role: "heading", "aria-level": "3" }, [el("span", { text: "학사 일정" })]),
       ...list.slice(0, 2).map(row), // 아래 할 일 목록을 너무 밀어내지 않게 2개까지 (나와 상관없는 건 ×로 숨김)
       list.length > 2 ? el("button", { type: "button", class: "ac-more linkish", text: `그 밖에 ${list.length - 2}개는 캘린더에서 보기 ›`, onclick: () => { calMode = "month"; current = "calendar"; renderTabs(); renderBody(); } }) : null,
       unhide,
@@ -943,7 +958,7 @@
   // 11/2: 톡방·문자 공지를 붙여 넣으면 AI가 날짜·시각·장소를 뽑아 아래 칸을 채움 (규칙으로는 "다음 주 수요일 저녁 7시" 같은 말을 다 읽기 어려움)
   //  누를 때만 보내고, 전화번호·메일·링크는 지우고 보냄. 서버는 저장하지 않음. 질문과 같은 하루 한도를 씀
   function noticeBox(f) {
-    const ta = el("textarea", { class: "ev-input notice-text", rows: "3", maxlength: "1500", placeholder: "톡방 공지를 그대로 붙여 넣어 보세요. 예: 다음 주 목요일 저녁 7시 상상관 302 정기 회의" });
+    const ta = el("textarea", { class: "ev-input notice-text", "aria-label": "톡방 공지 붙여 넣기", rows: "3", maxlength: "1500", placeholder: "톡방 공지를 그대로 붙여 넣어 보세요. 예: 다음 주 목요일 저녁 7시 상상관 302 정기 회의" });
     ta.value = f.notice || "";
     ta.addEventListener("input", () => (f.notice = ta.value));
     const msg = el("p", { class: "ev-sub", text: f.noticeMsg || "" });
@@ -1012,7 +1027,7 @@
           renderCalendar();
         },
       });
-    const err = el("p", { class: "ev-err" });
+    const err = el("p", { class: "ev-err", role: "alert" });
     const save = () => {
       const t = (f.t || "").trim().slice(0, 60);
       if (!t) return (err.textContent = "제목을 적어 주세요.");
@@ -1409,6 +1424,7 @@
           {
             class: calDay === ymd(d) ? "tt-ad picked" : "tt-ad",
             title: list.length ? "눌러서 그날 목록 보기" : null,
+            "aria-label": `${dayLabel(d)} 종일 일정 ${list.length}개`,
             onclick: () => {
               calDay = calDay === ymd(d) ? null : ymd(d);
               renderCalendar();
@@ -1538,9 +1554,9 @@
       renderCalendar();
     };
     const sub = el("div", { class: "cal-sub" }, [
-      el("button", { class: "small nav", text: "‹", title: "지난달", onclick: () => go(-1) }),
+      el("button", { class: "small nav", text: "‹", title: "지난달", "aria-label": "지난달", onclick: () => go(-1) }),
       el("span", { class: "title", text: `${y}년 ${m}월` }),
-      el("button", { class: "small nav", text: "›", title: "다음 달", onclick: () => go(1) }),
+      el("button", { class: "small nav", text: "›", title: "다음 달", "aria-label": "다음 달", onclick: () => go(1) }),
       el("span", { class: "grow" }),
       key !== ymd(now).slice(0, 7)
         ? el("button", {
@@ -1566,7 +1582,7 @@
           [el("span", { class: "rough-label", text: `${m}월 중` })].concat(rough.map((x) => el("button", { class: "ad-pill k-ev", title: "눌러서 고치기", text: x.ev.t, onclick: () => editEvent(x.id) })))
         )
       );
-    if (!mine?.ok && !eclass?.ok) parts.push(el("p", { class: "placeholder", text: "비교과·e클래스를 불러오는 중이거나 로그인이 필요해요." }));
+    if (!mine?.ok && !eclass?.ok) parts.push(el("p", { class: "placeholder", text: mineLoading || eclassLoading ? "비교과·e클래스를 불러오는 중…" : "e클래스·비교과에 로그인하면 마감과 비교과 일정이 보여요." }));
 
     const grid = el("div", { class: "mon" });
     for (const w of ["월", "화", "수", "목", "금", "토", "일"]) grid.appendChild(el("div", { class: "mon-wd", text: w }));
@@ -1685,11 +1701,12 @@
     userPut("hide", id, on ? hidden[id] : null);
     rerender();
   }
-  const hideBtn = (id, msg = "숨겼어요. 캘린더·AI에서도 빠져요.", title = "숨기기 (내 크롬 계정에서 모두 적용)") =>
+  // 11/6 검토: 화면 읽기 프로그램에 무엇을 숨기는지 들리게 (name)
+  const hideBtn = (id, name = "", msg = "숨겼어요. 캘린더·AI에서도 빠져요.", title = "숨기기 (내 크롬 계정에서 모두 적용)") =>
     el("button", {
       class: "hide-btn",
       title,
-      "aria-label": "숨기기",
+      "aria-label": name ? `${name} 숨기기` : "숨기기",
       text: "×",
       onclick: (e) => {
         e.preventDefault();
@@ -1733,7 +1750,7 @@
     return dateCol(el("a", { class: `tcard r${riskTier(s.start)}`, href: p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [s.name && s.name !== p.title ? s.name : null, p.place || p.department].filter(Boolean).join(" · ") })]),
-        hideBtn(x.id),
+        hideBtn(x.id, p.title),
       ]),
       el("div", { class: "tc-foot" }, [
         el("span", { class: "dline" }, [
@@ -1752,7 +1769,7 @@
     return dateCol(el("div", { class: `tcard r${riskTier(tm.start.toISOString())}` }, [
       el("button", { class: "tc-main tc-toggle", onclick: () => editEvent(x.evId) }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: ev.t }), el("div", { class: "tc-sub", text: [ev.p, ev.n].filter(Boolean).join(" · ") || "직접 넣은 일정" })]),
-        hideBtn(x.id),
+        hideBtn(x.id, ev.t),
       ]),
       el("div", { class: "tc-foot" }, [
         el("span", { class: "dline" }, [
@@ -1770,7 +1787,7 @@
     return dateCol(el("a", { class: `tcard r${riskTier(x.due)}`, href: x.p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: x.p.title }), el("div", { class: "tc-sub", text: [x.p.category, x.p.place].filter(Boolean).join(" · ") })]),
-        hideBtn(x.id),
+        hideBtn(x.id, x.p.title),
       ]),
       el("div", { class: "tc-foot" }, [
         el("span", { class: "dline" }, [icon("clock"), el("span", { class: days <= 0 ? "dchip today" : `dchip r${riskTier(x.due)}`, text: days <= 0 ? "오늘" : `D-${days}` }), el("span", { class: "when", text: `${endLabel(x.due)}까지` })]),
@@ -1923,7 +1940,7 @@
       else {
         if (thisWk.length) bodyParts.push(rows(grouped(weekKind, thisWk, kind.label)));
         else bodyParts.push(el("p", { class: "placeholder week-none", text: `이번 주(일요일까지) 마감인 ${kind.label}는 없어요.` }));
-        if (later.length) bodyParts.push(el("div", { class: "sec-title later" }, [el("span", { text: "다음 주 이후" }), el("span", { class: "n", text: String(later.length) })]), rows(grouped(weekKind, later, kind.label)));
+        if (later.length) bodyParts.push(el("div", { class: "sec-title later", role: "heading", "aria-level": "3" }, [el("span", { text: "다음 주 이후" }), el("span", { class: "n", text: String(later.length) })]), rows(grouped(weekKind, later, kind.label)));
       }
       bodyParts.push(hiddenSection(all[weekKind].filter((it) => isHidden(it.id)), (it) => `${it.title} · ${it.course || ""}`));
     }
@@ -2023,7 +2040,7 @@
               ])
             : null,
         ]),
-        hideBtn(it.id),
+        hideBtn(it.id, it.title),
       ]),
       footer(it.due, doomed ? "출석 어려움" : NEED[it.type] || "확인 필요", doomed),
     ]));
@@ -2039,7 +2056,7 @@
         doomed ? el("div", { class: "sub alert" }, [icon("warn"), el("span", { text: `출석 어려움 · ${absenceNumbers(it)}` })]) : null,
       ]),
       dueEl(it.due),
-      hideBtn(it.id),
+      hideBtn(it.id, it.title),
     ]);
   }
 
@@ -2371,7 +2388,7 @@
           el("div", { class: "tc-sub", text: [p.category, p.place || p.department].filter(Boolean).join(" · ") }),
         ]),
         minePoint(p) ? el("span", { class: "badge program", title: "이수하면 받는 포인트 (학교 상세 화면 기준)", text: minePoint(p) }) : null,
-        hideBtn(progHideId(p), "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
+        hideBtn(progHideId(p), p.title, "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
       ]),
       el("div", { class: "tc-foot" }, [scheduleLine(p), el("span", { class: "tc-status plain", text: state })]),
     ]));
@@ -2382,7 +2399,7 @@
     return dateCol(el("a", { class: "tcard r2", href: p.listUrl, target: "_blank", rel: "noopener", title: "종료된 프로그램 목록에서 설문조사 버튼을 눌러 작성해요" }, [
       el("div", { class: "tc-main" }, [
         el("div", { class: "info" }, [el("div", { class: "tc-title", text: p.title }), el("div", { class: "tc-sub", text: [p.category, done].filter(Boolean).join(" · ") })]),
-        hideId ? hideBtn(hideId) : null,
+        hideId ? hideBtn(hideId, p.title) : null,
       ]),
       el("div", { class: "tc-foot" }, [
         el("span", { class: "dline" }, [el("span", { class: "when", text: p.mileage ? `${p.mileage}p 프로그램` : "종료된 프로그램" })]),
@@ -2396,7 +2413,7 @@
     const s = p.sessions[0];
     return el("a", { class: "todo quiet", href: p.url, target: "_blank", rel: "noopener" }, [
       el("div", { class: "info" }, [el("div", { class: "name", text: p.title }), el("div", { class: "sub", text: [periodText(s), p.phase === "wait" ? "시작 대기" : "", minePoint(p) || ""].filter(Boolean).join(" · ") })]),
-      hideBtn(progHideId(p), "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
+      hideBtn(progHideId(p), p.title, "내 비교과에서 숨겼어요. 이번 주·캘린더·AI에서도 빠져요.", "내 비교과에서 숨기기 (신청이 안 됐거나 안 듣는 비교과)"),
     ]);
   }
 
@@ -2480,7 +2497,7 @@
     ]);
   }
 
-  const secTitle = (title, n, note) => el("div", { class: "sec-title" }, [el("span", { text: title }), n != null ? el("span", { class: "n", text: String(n) }) : null, note ? el("span", { class: "note", text: note }) : null]);
+  const secTitle = (title, n, note) => el("div", { class: "sec-title", role: "heading", "aria-level": "3" }, [el("span", { text: title }), n != null ? el("span", { class: "n", text: String(n) }) : null, note ? el("span", { class: "note", text: note }) : null]);
   const byNext = (a, b) => new Date(nextSession(a).start) - new Date(nextSession(b).start);
 
   function mineGroups() {
@@ -3156,7 +3173,7 @@
       el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
     ]);
 
-    const log = el("div", { class: "chat" });
+    const log = el("div", { class: "chat", role: "log", "aria-live": "polite" });
     log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." })]));
     for (const m of chat) {
       const bubble = m.ai ? el("div", { class: "bubble ai-say" }, aiSentence(m)) : el("div", { class: `bubble${m.pending ? " pending" : ""}`, text: m.text });
@@ -3173,7 +3190,7 @@
       { class: "ai-presets" },
       PRESET_LIST.map((p) => el("button", { class: "chip", text: p.label, disabled: aiBusy ? "" : null, onclick: () => ask(p.label, p.id) }))
     );
-    const input = el("input", { class: "ai-input", type: "text", maxlength: "200", placeholder: "예: 이번 주 과제 뭐 남았어?" });
+    const input = el("input", { class: "ai-input", "aria-label": "AI에게 질문", type: "text", maxlength: "200", placeholder: "예: 이번 주 과제 뭐 남았어?" });
     const counter = el("span", { class: "ai-count", text: "0/200" });
     input.addEventListener("input", () => (counter.textContent = `${input.value.length}/200`));
     const send = () => {
@@ -3238,7 +3255,7 @@
   const statusList = el("ul", { class: "status" });
   // ---------- 연결 상태 · 설정 (10/20: 백업, 내 데이터 지우기, 처음 안내 다시 보기, 버전) ----------
   let wipeArmed = false;
-  const settingsNote = el("p", { class: "set-note" });
+  const settingsNote = el("p", { class: "set-note", role: "status" });
   const setOpts = el("div", { class: "set-opts" }); // 켜고 끄는 것들 (rerender 때 다시 그림)
   function demoSwitch() {
     const on = !!DEMO;
@@ -3391,6 +3408,8 @@
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || panel.classList.contains("hidden")) return;
     if (evDraft) {
+      // 11/6 검토: 쓰던 내용이 있으면 Esc로 지우지 않음 (취소 버튼으로만)
+      if ([evDraft.t, evDraft.p, evDraft.n, evDraft.notice].some((v) => String(v || "").trim())) return showToast("쓰던 일정이 있어요. 닫으려면 ‘취소’를 눌러 주세요.");
       evDraft = null;
       return renderCalendar();
     }

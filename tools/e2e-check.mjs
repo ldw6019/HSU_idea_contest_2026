@@ -149,7 +149,11 @@ check("고른 일정으로 칸 채움", vals.includes("동아리 정기 회의")
 await R.locator("section.panel").screenshot({ path: resolve(root, "tools/shots/e2e-notice.png") });
 await page.keyboard.press("Escape");
 await page.waitForTimeout(200);
-check("Esc → 일정 칸 닫힘", (await R.locator(".notice-box").count()) === 0);
+// 11/6: 쓰던 내용이 있으면 Esc로 지우지 않고 알림만 → 취소로 닫기
+check("쓰던 일정은 Esc로 안 지워짐", (await R.locator(".notice-box").count()) === 1 && /취소/.test(await R.locator(".toast").innerText()));
+await R.locator(".ev-form button", { hasText: "취소" }).click();
+await page.waitForTimeout(200);
+check("취소 → 일정 칸 닫힘", (await R.locator(".notice-box").count()) === 0);
 await page.keyboard.press("Escape");
 await page.waitForTimeout(300);
 check("Esc 한 번 더 → 패널 닫힘", !(await R.locator("section.panel").isVisible().catch(() => false)));

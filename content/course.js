@@ -126,6 +126,7 @@
       .hsup-pill { margin: 0 8px 0 6px; vertical-align: middle; }
 
       .hsup-flash { transition: background .6s, outline-color .6s; outline: 3px solid #0b4ea2 !important; outline-offset: 4px; background: #eef4ff !important; }
+      @media (prefers-reduced-motion: reduce) { .hsup-flash { transition: none; } }
     `;
     document.head.appendChild(st);
   }
