@@ -104,5 +104,14 @@ check("프리셋마다 요금·키 이름 있음", Object.values(PRESETS).every(
   check("잘림 → too_long", errorCode(Object.assign(new Error("x"), { code: "too_long" })) === "too_long");
 }
 
+// 11/6: 잘린 첫 시도의 비용도 합쳐서 셈
+{
+  const { callModel } = await import("../src/providers.js");
+  let k = 0;
+  const env = { AI_PRESET: "mock", MOCK: async () => { if (k++ === 0) throw Object.assign(new Error("cut"), { code: "too_long", usage: { input: 1000, output: 600 } }); return { intent: "today", message: "ok" }; } };
+  const r = await callModel(env, { system: "s", user: "x".repeat(100), tool: { name: "t" }, maxTokens: 600 });
+  const second = Math.ceil(50 * 0.1 + 120 * 0.5), first = Math.ceil(1000 * 0.1 + 600 * 0.5);
+  check("잘린 시도 비용 포함", r.cost === first + second, `${r.cost} vs ${first + second}`);
+}
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

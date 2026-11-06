@@ -20,7 +20,11 @@ export async function read(key) {
 
 export async function write(key, data) {
   const entry = { data, fetchedAt: Date.now() };
-  await chrome.storage.local.set({ [PREFIX + key]: entry });
+  try {
+    await chrome.storage.local.set({ [PREFIX + key]: entry });
+  } catch (err) {
+    console.warn("[HSU Plus] 캐시 저장 실패", err?.message); // 11/6: 저장에 실패해도 새로 받은 데이터는 그대로 쓴다
+  }
   return entry;
 }
 
@@ -39,6 +43,11 @@ export async function getOrFetch(key, ttl, fetcher, { force = false } = {}) {
     const entry = await write(key, data);
     return { ...entry, fromCache: false };
   } catch (error) {
+    // 11/6 검토: 로그인이 풀렸으면 예전 데이터를 보여 주지 않고 지운다 (공용 PC에서 앞 사람 시간표·과제·포인트가 보였음)
+    if (error?.name === "LoginRequiredError") {
+      if (cached) await chrome.storage.local.remove(PREFIX + key).catch(() => {});
+      throw error;
+    }
     if (cached) return { ...cached, fromCache: true, error };
     throw error;
   }

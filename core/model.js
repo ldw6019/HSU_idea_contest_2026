@@ -39,7 +39,13 @@ export const STATUS = Object.freeze({
  * @param {string} [p.url]        원래 페이지 주소
  */
 export function makeItem(p) {
-  const iso = (v) => (v ? new Date(v).toISOString() : null);
+  // 11/6 검토: 못 읽는 날짜("미정" 등) 하나 때문에 목록 전체가 실패하지 않게 null로, 날짜만 있는 값("2026-11-05")은 한국 시간으로 (시작은 0시, 끝·마감은 그날 끝)
+  const iso = (v, endOfDay = false) => {
+    if (!v) return null;
+    const dateOnly = typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v.trim());
+    const d = dateOnly ? new Date(`${v.trim()}T${endOfDay ? "23:59:59" : "00:00:00"}+09:00`) : new Date(v);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
   return {
     id: p.id || `${p.source}:${p.type}:${p.title}:${iso(p.start) || iso(p.due) || ""}`,
     source: p.source,
@@ -49,8 +55,8 @@ export function makeItem(p) {
     place: p.place || null,
     professor: p.professor || null,
     start: iso(p.start),
-    end: iso(p.end),
-    due: iso(p.due),
+    end: iso(p.end, true),
+    due: iso(p.due, true),
     status: p.status || STATUS.TODO,
     url: p.url || null,
     meta: p.meta || {}, // 종류별 추가 정보 (수강률, 포인트, 정원 등)

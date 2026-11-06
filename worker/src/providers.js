@@ -53,7 +53,9 @@ const PROVIDERS = {
       }
     );
     const block = (data.content || []).find((b) => b.type === "tool_use" && b.name === tool.name);
-    if (!block) throw Object.assign(new Error("model returned no tool output"), { code: data.stop_reason === "max_tokens" ? "too_long" : "format" });
+    const usage = { input: data.usage?.input_tokens || 0, output: data.usage?.output_tokens || 0 };
+    // 11/6 검토: 도구 블록이 있어도 길이 제한에서 잘렸으면 불완전할 수 있으니 잘림으로 본다. 잘린 시도의 사용량도 넘겨 비용에 넣음
+    if (!block || data.stop_reason === "max_tokens") throw Object.assign(new Error("model returned no tool output"), { code: data.stop_reason === "max_tokens" ? "too_long" : "format", usage });
     return { output: block.input, usage: { input: data.usage?.input_tokens || 0, output: data.usage?.output_tokens || 0 } };
   },
 
@@ -83,8 +85,8 @@ const PROVIDERS = {
     }
     const parts = data.candidates?.[0]?.content?.parts || [];
     const call = parts.find((p) => p.functionCall?.name === tool.name)?.functionCall;
-    if (!call) throw Object.assign(new Error("model returned no tool output"), { code: data.candidates?.[0]?.finishReason === "MAX_TOKENS" ? "too_long" : "format" });
     const u = data.usageMetadata || {};
+    if (!call) throw Object.assign(new Error("model returned no tool output"), { code: data.candidates?.[0]?.finishReason === "MAX_TOKENS" ? "too_long" : "format", usage: { input: u.promptTokenCount || 0, output: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } });
     return { output: call.args || {}, usage: { input: u.promptTokenCount || 0, output: (u.candidatesTokenCount || 0) + (u.thoughtsTokenCount || 0) } };
   },
 
@@ -123,6 +125,7 @@ const PROVIDERS = {
 export async function callModel(env, args) {
   const tries = [resolveModel(env), resolveModel(env, "FALLBACK")].filter(Boolean);
   let lastErr;
+  let spent = 0; // 11/6 검토: 잘리거나 실패했지만 돈이 든 시도의 비용 (예전엔 비용 상한 계산에서 빠졌음)
   for (const m of tries) {
     const fn = PROVIDERS[m.provider];
     if (!fn) throw new Error(`unknown provider ${m.provider}`);
@@ -135,16 +138,18 @@ export async function callModel(env, args) {
       try {
         r = await fn(m, args, env);
       } catch (err) {
+        if (err.usage) spent += costMicroUSD(m, err.usage);
         // 답이 길어 잘리면(예: "영어로 다섯 문장 이상" 같은 요청) 한 번만 2배 길이로 다시 → 서버가 문장을 250자로 자름
-        if (err.code !== "too_long") throw err;
+        if (err.code !== "too_long") throw Object.assign(err, { usage: undefined });
         r = await fn(m, { ...args, maxTokens: args.maxTokens * 2 }, env);
       }
-      return { ...r, model: m.model, preset: m.name, cost: costMicroUSD(m, r.usage) };
+      return { ...r, model: m.model, preset: m.name, cost: costMicroUSD(m, r.usage) + spent };
     } catch (err) {
+      if (err.usage) spent += costMicroUSD(m, err.usage);
       lastErr = err;
     }
   }
-  throw lastErr;
+  throw Object.assign(lastErr || new Error("no model"), { spentMicro: spent });
 }
 
 /** 모델 오류 → 짧은 원인 코드 (확장 안내 끝 괄호, wrangler tail 기록용. 질문 내용은 남기지 않음) */

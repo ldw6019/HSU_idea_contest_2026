@@ -291,10 +291,14 @@ async function fetchPoints(getText) {
   const first = await getText(`${BASE}/ko/mypage/point`);
   const points = parsePoints(first);
   const history = parsePointHistory(first);
-  for (let p = 2, last = history.length; p <= POINT_MAX_PAGES && last >= POINT_PAGE; p++) {
+  // 11/6 검토: 없는 쪽 번호에 마지막 쪽이 다시 오면 같은 내역이 여러 번 더해졌을 수 있음 → 앞 쪽과 같으면 멈춤
+  const sig = (rows) => JSON.stringify(rows);
+  for (let p = 2, last = history.length, prev = sig(history); p <= POINT_MAX_PAGES && last >= POINT_PAGE; p++) {
     const rows = parsePointHistory(await getText(`${BASE}/ko/mypage/point/${p}`));
+    if (!rows.length || sig(rows) === prev) break;
     history.push(...rows);
     last = rows.length;
+    prev = sig(rows);
   }
   return { ...points, history };
 }

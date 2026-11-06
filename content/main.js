@@ -380,7 +380,7 @@
   function onUserChange(ns, fn) {
     try {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "sync") return;
+        if (area !== "sync" || DEMO) return; // 11/6: 시연 중엔 다른 기기에서 바꾼 실제 설정을 섞지 않음
         let hit = false;
         for (const [k, c] of Object.entries(changes)) {
           if (!k.startsWith(`${ns}|`)) continue;
@@ -1003,7 +1003,7 @@
     return el("details", { class: "notice-box", open: f.noticeOpen ? "" : null, ontoggle: (e) => (f.noticeOpen = e.target.open) }, [
       el("summary", { text: "공지 붙여 넣어 AI로 채우기" }),
       ta,
-      el("div", { class: "notice-row" }, [btn, el("span", { class: "ev-hint", text: "누를 때만 AI로 보내요 · 전화번호·메일·링크는 지우고 보내요 · 서버에 저장 안 해요" })]),
+      el("div", { class: "notice-row" }, [btn, el("span", { class: "ev-hint", text: "누를 때만 AI로 보내요 · 전화번호·메일·링크·계좌번호는 지우고 보내요 · 서버에 저장 안 해요" })]),
       msg,
       found,
     ]);
@@ -2123,8 +2123,25 @@
     import(chrome.runtime.getURL("core/config.js")),
   ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung, config]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung, config }));
   // 시연 모드면 저장(캐시)을 건너뛰고, e클래스·시간표를 가짜 HTML로 (학교에 요청 안 함)
-  const mods = Promise.all([realMods, demoReady, import(chrome.runtime.getURL("adapters/info.js"))]).then(([m, demo, info]) => {
-    if (!demo) return m;
+  // 11/6 검토: 같은 크롬을 다른 학생이 쓰면(공용 PC) 앞 사람 캐시를 지운다.
+  //  e클래스 사용자 번호는 저장하지 않고, 되돌릴 수 없는 짧은 값(해시)만 비교한다. 번호를 못 찾으면 아무것도 안 함
+  async function whoCheck(cache) {
+    try {
+      const a = document.querySelector('a[href*="/user/profile.php?id="], a[href*="/user/view.php?id="]');
+      const id = a && /[?&]id=(\d+)/.exec(a.getAttribute("href") || "")?.[1];
+      if (!id) return;
+      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hsuplus-who:${id}`));
+      const tag = [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
+      const { "ui:who": prev } = await chrome.storage.local.get("ui:who");
+      if (prev && prev !== tag) await cache.clearAll();
+      if (prev !== tag) await chrome.storage.local.set({ "ui:who": tag });
+    } catch {}
+  }
+  const mods = Promise.all([realMods, demoReady, import(chrome.runtime.getURL("adapters/info.js"))]).then(async ([m, demo, info]) => {
+    if (!demo) {
+      await whoCheck(m.cache);
+      return m;
+    }
     m.eclass.useDemo(demo.learnHtml);
     const demoDoc = new DOMParser().parseFromString(demo.mainPage, "text/html");
     return {
@@ -2172,6 +2189,8 @@
   let programs = null; // { ok, data: items[], fetchedAt, error }
   let programsLoading = false;
   async function loadPrograms({ force = false } = {}) {
+    if (programsLoading) return; // 11/6 검토: 겹쳐 누르면 학교에 같은 요청이 줄을 섰음
+    if (force && programs?.fetchedAt && Date.now() - programs.fetchedAt < 60000) force = false; // 방금 받았으면 다시 안 받음
     programsLoading = true;
     rerender();
     try {
@@ -2179,7 +2198,7 @@
       const r = await cache.getOrFetch("programs-open", cache.TTL.PROGRAMS, () => hsportal.fetchOpenPrograms(getText), { force });
       programs = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       logItems("접수중 비교과", r.data);
-      ensureDetails(r.data.map((it) => it.meta?.programId), { force });
+      ensureDetails(r.data.map((it) => it.meta?.programId)); // 11/6: 상세는 12시간 저장을 그대로 씀 (새로고침마다 최대 96개를 다시 받았음)
     } catch (err) {
       if (isDeadContext(err)) return onDeadContext();
       console.warn("[HSU Plus] 비교과 불러오기 실패:", err);
@@ -2193,6 +2212,8 @@
   let mine = null; // { ok, data: {points, programs, surveys}, fetchedAt, error }
   let mineLoading = false;
   async function loadMine({ force = false } = {}) {
+    if (mineLoading) return; // 11/6: 겹쳐 부르지 않게
+    if (force && mine?.fetchedAt && Date.now() - mine.fetchedAt < 60000) force = false;
     mineLoading = true;
     rerender();
     try {
@@ -2227,14 +2248,22 @@
   // 11/2: 닫혀 있을 때도 "HSU+" 버튼에 오늘·내일 마감 수 (열기 전엔 마지막으로 불러온 기록으로, 학교에 새로 요청하지 않음)
   const launcherBadge = el("span", { class: "ln-badge", hidden: "" });
   launcher.appendChild(launcherBadge);
-  function updateBadge(data = eclass?.ok ? eclass.data : null) {
+  // 11/6 검토: 저장된 데이터를 기억해 두고 숨긴 목록이 늦게 와도 다시 셈, 12시간 넘게 지난 데이터면 숫자를 안 띄움, 화면 읽기 프로그램에도 숫자를 알림
+  let badgeData = null;
+  function updateBadge(data = eclass?.ok ? eclass.data : badgeData) {
     if (!data) return;
+    badgeData = data;
     const n = (data.items || []).filter((it) => it.status === "todo" && it.due && new Date(it.due) >= new Date() && daysLeft(it.due) <= 1 && !isHidden(it.id) && (it.type !== "video" || !it.start || new Date(it.start) <= new Date())).length;
     launcherBadge.textContent = String(n);
     launcherBadge.toggleAttribute("hidden", !n);
     launcher.title = n ? `HSU Plus 열기 · 오늘·내일 마감 ${n}개` : "HSU Plus 열기";
+    launcher.setAttribute("aria-label", launcher.title);
   }
-  mods.then(({ cache }) => cache.read("eclass")).then((r) => !eclass && r?.data && updateBadge(r.data)).catch(() => {});
+  mods
+    .then(({ cache }) => cache.read("eclass"))
+    .then((r) => !eclass && r?.data && Date.now() - r.fetchedAt < 12 * 3600000 && updateBadge(r.data))
+    .catch(() => {});
+  setInterval(() => updateBadge(), 60000); // 시간이 지나 "내일"이 "오늘"이 되거나 마감이 지나면 다시 셈
 
   function rerender() {
     if (deadContext) return renderDeadNotice();
@@ -2540,7 +2569,7 @@
       el("button", {
         class: "small refresh",
         text: "새로고침",
-        disabled: loadingAny ? "" : null,
+        disabled: loadingAny || detailProgress ? "" : null, // 11/6: 상세를 다 받을 때까지 잠금
         onclick: () => {
           loadPrograms({ force: true });
           loadMine({ force: true });

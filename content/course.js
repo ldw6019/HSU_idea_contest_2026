@@ -162,21 +162,35 @@
   }
 
   // 남은 시간 꼬리표: 1초마다 줄어든다
+  //  11/6 검토: 남은 게 없거나 탭이 가려져 있으면 쉬고, 0이 되면 "마감 지남"으로 바꾸고 같은 줄의 "N분 필요"도 지운다
   const live = new Set();
+  let timer = null;
   function countdown(until) {
     const t = tag("hsup-left", "");
     const tick = () => {
       const left = (until - Date.now()) / 1000;
-      t.textContent = left > 0 ? `${dhms(left)} 남음` : "마감";
-      return left > 0;
+      if (left > 0) {
+        t.textContent = `${dhms(left)} 남음`;
+        return true;
+      }
+      t.textContent = "마감 지남";
+      t.className = "hsup-tag hsup-bad";
+      t.dataset.ink = "light";
+      t.parentElement?.querySelectorAll("[data-need]").forEach((n) => n.remove());
+      return false;
     };
-    tick();
-    live.add({ t, tick });
+    if (tick()) live.add({ t, tick });
+    if (!timer && live.size) timer = setInterval(step, 1000);
     return t;
   }
-  setInterval(() => {
+  function step() {
+    if (document.hidden) return;
     for (const x of live) if (!x.t.isConnected || !x.tick()) live.delete(x);
-  }, 1000);
+    if (!live.size) {
+      clearInterval(timer);
+      timer = null;
+    }
+  }
 
   // 진도 막대 (글자 안에)
   function bar(ratio, colorCls, text, moving) {
@@ -187,6 +201,7 @@
       const f = mk("div", `hsup-fill ${colorCls}${w >= 1 ? " hsup-full" : ""}${moving ? " hsup-live" : ""}`);
       f.style.width = `${w * 100}%`;
       const l = mk("span", "hsup-lbl", text);
+      l.setAttribute("aria-hidden", "true"); // 11/6: 화면 읽기 프로그램이 같은 글을 두 번 읽었음
       if (LIGHT_INK.has(colorCls)) l.dataset.ink = "light";
       f.appendChild(l);
       b.appendChild(f);
@@ -229,8 +244,11 @@
     else if (state === "wait") row.appendChild(tag("hsup-wait", from ? `${from.getMonth() + 1}/${from.getDate()}(${DAY[from.getDay()]}) 열림` : "열리기 전"));
     else if (open) {
       const need = required - learned;
-      if (to && need > (to - now) / 1000) row.appendChild(warnTag("hsup-r1", "지금부터 들어도 출석 시간을 채우기 어려워요"));
-      else if (need > 0) row.appendChild(tag(color, `${dhms(need)} 필요`));
+      const needTag = to && need > (to - now) / 1000 ? warnTag("hsup-r1", "지금부터 들어도 출석 시간을 채우기 어려워요") : need > 0 ? tag(color, `${dhms(need)} 필요`) : null;
+      if (needTag) {
+        needTag.dataset.need = "1";
+        row.appendChild(needTag);
+      }
       if (to) row.appendChild(countdown(to.getTime()));
     }
     placeRow(li, row);
@@ -238,10 +256,13 @@
 
   // ---------- 과제 · 퀴즈 ----------
   // 제목 옆 한 줄: [제출 완료] [제출 10/10(토) 17:04] [마감 …]  /  [미제출] [마감 …] [N일 … 남음]  (마감 뒤 제출이면 [늦은 제출 …])
-  function decorateTask(li, { done, doneLabel, todoLabel, due, doneAt }, now) {
+  function decorateTask(li, { done, doneLabel, todoLabel, due, doneAt, unknown, inProgress }, now) {
     const past = due && due < now;
     const row = mk("span", "hsup-inline");
     if (done) row.appendChild(tag("hsup-ok", doneLabel));
+    // 11/6 검토: 확인에 실패하면 "미응시"라고 단정하지 않음, 시작만 하고 안 낸 퀴즈는 따로
+    else if (unknown) row.appendChild(Object.assign(tag("hsup-wait", "응시 확인 불가"), { title: "퀴즈 화면을 읽지 못했어요. 학교 화면에서 확인해 주세요." }));
+    else if (inProgress && !past) row.appendChild(tag(due ? `hsup-r${tier(due)}` : "hsup-wait", "응시 중 (제출 전)"));
     else if (past) row.appendChild(tag("hsup-bad", `${todoLabel} · 마감 지남`));
     else row.appendChild(tag(due ? `hsup-r${tier(due)}` : "hsup-wait", todoLabel));
     if (doneAt) {
@@ -254,6 +275,24 @@
   }
 
   // ---------- 불러와서 붙이기 ----------
+  // 11/6 검토·사용자: 과목 페이지를 열 때마다 퀴즈·과제 화면을 전부 다시 열었음(학교 요청 11~28번, 학교 기록에 "봤음"이 남을 수 있음)
+  //  → 바뀌지 않는 것은 저장해 두고 다시 열지 않는다. 과목 번호는 학기(1학기·여름·2학기·겨울)마다 새로 생기니 과목별로 저장하면 학기가 섞이지 않음
+  //  - 제출 시각: 마감이 지나면 영구, 마감 전엔 6시간 (다시 낼 수 있으니)
+  //  - 퀴즈: 응시 완료·마감 지난 퀴즈는 영구, 진행 중인 퀴즈는 10분
+  //  - 150일(한 학기보다 김) 안 쓴 과목 기록은 지움. "내 데이터 모두 지우기"·사용자 바뀜 때도 같이 지워짐(cache: 키)
+  const CKEY = `cache:course:${courseId}`;
+  const CHOUR = 3600000;
+  async function loadCourseCache() {
+    try {
+      const all = await chrome.storage.local.get(null);
+      const old = Object.keys(all).filter((k) => k.startsWith("cache:course:") && Date.now() - (all[k]?.used || 0) > 150 * 24 * CHOUR);
+      if (old.length) chrome.storage.local.remove(old).catch(() => {});
+      return all[CKEY] && typeof all[CKEY] === "object" ? { sub: {}, quiz: {}, ...all[CKEY] } : { sub: {}, quiz: {} };
+    } catch {
+      return { sub: {}, quiz: {} };
+    }
+  }
+  const saveCourseCache = (c) => chrome.storage.local.set({ [CKEY]: { ...c, used: Date.now() } }).catch(() => {});
   const getDoc = async (path) => {
     const res = await fetch(path, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(15000) });
     if (!res.ok) throw new Error(`요청 실패 (${res.status})`);
@@ -294,16 +333,27 @@
       const v = videos.get(li.id.replace("module-", ""));
       if (!v || li.dataset.hsup) continue;
       li.dataset.hsup = "1";
-      decorateVideo(li, v, progress.get(ec.norm(v.name)), now, progress.size === 0);
+      const got = progress.get(ec.norm(v.name));
+      // 11/6: 진도표에서 이 영상을 못 찾았거나 같은 제목이 여러 개면 "확인 불가" (결석으로 단정하지 않게)
+      decorateVideo(li, v, got?.dup ? undefined : got, now, progress.size === 0 || !got || !!got.dup);
     }
 
     // 과제: 목록 표로 제출 여부·마감, 낸 과제만 과제 화면에서 제출 시각
     const assigns = assignDoc ? ec.parseAssignments(assignDoc) : [];
+    const cc = await loadCourseCache();
     const submittedAt = new Map();
     await lim.runLimited(
       assigns
         .filter((a) => a.submitted)
-        .map((a) => async () => submittedAt.set(cmidOf(a.url), readSubmittedAt(await getDoc(new URL(a.url).pathname + new URL(a.url).search), ec.parseDate))),
+        .map((a) => async () => {
+          const id = cmidOf(a.url);
+          const hit = cc.sub[id];
+          const keep = hit && (a.due && a.due < now ? true : Date.now() - hit.at < 6 * CHOUR);
+          if (keep) return submittedAt.set(id, hit.v ? new Date(hit.v) : null);
+          const at = readSubmittedAt(await getDoc(new URL(a.url).pathname + new URL(a.url).search), ec.parseDate);
+          submittedAt.set(id, at);
+          cc.sub[id] = { v: at ? at.toISOString() : null, at: Date.now() };
+        }),
       2
     );
     const assignBy = new Map(assigns.map((a) => [cmidOf(a.url), a]));
@@ -316,13 +366,24 @@
 
     // 퀴즈: 목록 표로 마감, 각 퀴즈 화면의 "진행 상황" 칸으로 응시 여부
     const quizzes = quizDoc ? ec.parseQuizIndex(quizDoc) : [];
-    const done = await lim.runLimited(quizzes.map((q) => async () => ec.parseQuizDone(await getDoc(new URL(q.url).pathname + new URL(q.url).search))), 2);
-    const quizBy = new Map(quizzes.map((q, i) => [q.cmid, { ...q, done: done[i].ok && done[i].value }]));
+    const states = await lim.runLimited(
+      quizzes.map((q) => async () => {
+        const hit = cc.quiz[q.cmid];
+        const closed = q.due && q.due < now;
+        if (hit && (hit.done || (closed && hit.at > q.due.getTime()) || Date.now() - hit.at < CHOUR / 6)) return hit;
+        const st = { ...ec.parseQuizState(await getDoc(new URL(q.url).pathname + new URL(q.url).search)), at: Date.now() };
+        cc.quiz[q.cmid] = st;
+        return st;
+      }),
+      2
+    );
+    saveCourseCache(cc);
+    const quizBy = new Map(quizzes.map((q, i) => [q.cmid, { ...q, done: states[i].ok && states[i].value.done, inProgress: states[i].ok && states[i].value.inProgress, unknown: !states[i].ok }]));
     for (const li of document.querySelectorAll("li.activity.modtype_quiz")) {
       const q = quizBy.get(li.id.replace("module-", ""));
       if (!q || li.dataset.hsup) continue;
       li.dataset.hsup = "1";
-      decorateTask(li, { done: q.done, doneLabel: "응시 완료", todoLabel: "미응시", due: q.due }, now);
+      decorateTask(li, { done: q.done, doneLabel: "응시 완료", todoLabel: "미응시", due: q.due, unknown: q.unknown, inProgress: q.inProgress }, now);
     }
   }
 

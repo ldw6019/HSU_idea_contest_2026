@@ -73,7 +73,7 @@ export function googleLink(ev) {
 }
 
 // ---------- .ics (아이폰·삼성·구글·아웃룩 캘린더에서 가져오기) ----------
-const icsEscape = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/[,;]/g, (c) => `\\${c}`);
+const icsEscape = (s) => String(s || "").replace(/\\/g, "\\\\").replace(/\r\n?|\n/g, "\\n").replace(/[,;]/g, (c) => `\\${c}`); // 11/6: \r도 (CRLF 메모가 줄을 깨뜨렸음)
 // 75바이트마다 줄을 접는다 (RFC 5545). 한글은 3바이트라 글자 수로 대충 자르면 깨질 수 있어 바이트로 센다
 function fold(line) {
   const enc = new TextEncoder();
@@ -99,7 +99,7 @@ export function buildIcs(events, now = new Date()) {
   lines.push("BEGIN:VTIMEZONE", "TZID:Asia/Seoul", "BEGIN:STANDARD", "DTSTART:19700101T000000", "TZOFFSETFROM:+0900", "TZOFFSETTO:+0900", "TZNAME:KST", "END:STANDARD", "END:VTIMEZONE");
   for (const ev of events) {
     const s = new Date(ev.start);
-    lines.push("BEGIN:VEVENT", `UID:${ev.uid || `${icsUtc(s)}-${Math.random().toString(36).slice(2)}`}@hsuplus`, `DTSTAMP:${icsUtc(now)}`);
+    lines.push("BEGIN:VEVENT", `UID:${String(ev.uid || `${icsUtc(s)}-${Math.random().toString(36).slice(2)}`).replace(/[^\w.-]/g, "").slice(0, 80)}@hsuplus`, `DTSTAMP:${icsUtc(now)}`);
     if (ev.allDay) {
       const e = new Date(ev.end || ev.start);
       e.setDate(e.getDate() + 1);

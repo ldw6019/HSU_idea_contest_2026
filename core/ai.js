@@ -419,7 +419,7 @@ export async function askRemote(endpoint, installId, question, context, { timeou
     const res = await fetch(`${endpoint.replace(/\/$/, "")}/v1/ask`, {
       method: "POST",
       headers: { "content-type": "application/json", "x-hsup-install": installId },
-      body: JSON.stringify({ question: sanitizeQuestion(question), context }),
+      body: JSON.stringify({ question: scrubPersonal(sanitizeQuestion(question)), context }), // 11/6: 직접 쓴 질문의 전화번호·학번 등도 지우고 보냄
       signal: ctrl.signal,
     });
     const data = await res.json().catch(() => ({}));
@@ -431,18 +431,24 @@ export async function askRemote(endpoint, installId, question, context, { timeou
 }
 
 // ---------- 공지 → 일정 (11/2) ----------
-/** 보내기 전에 전화번호·메일·링크는 지운다 (일정 뽑기에 필요 없고, 남의 연락처일 수 있음) */
-export function scrubNotice(text) {
+/** 보내기 전에 전화번호·메일·링크·긴 번호(계좌·학번)는 지운다 (일정 뽑기에 필요 없고, 남의 개인정보일 수 있음)
+ *  11/6 검토: 계좌번호("신한 110-123-456789"), 학번 목록, +82 번호, http 없는 링크(open.kakao.com/…)가 그대로 나갔음 */
+export function scrubPersonal(text) {
   return String(text || "")
-    .normalize("NFC")
+    .normalize("NFKC") // 전각 숫자·문자(０１０, ｗｗｗ)도 같게
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "[메일]")
     .replace(/https?:\/\/\S+|www\.\S+/gi, "[링크]")
-    .replace(/[\w.+-]+@[\w-]+\.[\w.]+/g, "[메일]")
-    .replace(/\b0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}\b/g, "[전화]")
-    .replace(/[ \t]+/g, " ")
-    .trim()
-    .slice(0, 1500);
+    .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}(?:\/\S*)?/gi, "[링크]")
+    .replace(/\+?82[-.\s]?\(?0?1\d\)?[-.\s]?\d{3,4}[-.\s]?\d{4}/g, "[전화]")
+    .replace(/(?<![\d-])\(?0\d{1,2}\)?[-.\s]?\d{3,4}[-.\s]?\d{4}(?![\d-])/g, "[전화]")
+    .replace(/(?<![\d-])1[5-9]\d{2}-\d{4}(?![\d-])/g, "[전화]")
+    .replace(/\d+(?:-\d+){1,4}/g, (m) => (m.replace(/\D/g, "").length >= 9 ? "[번호]" : m)) // 계좌번호 (날짜 2026-11-10은 8자리라 그대로)
+    .replace(/(?<!\d)\d{7,}(?!\d)/g, "[번호]"); // 학번·계좌 (붙여 쓴 7자리 이상)
 }
-export async function extractRemote(endpoint, installId, text, today, { timeoutMs = 20000 } = {}) {
+export function scrubNotice(text) {
+  return scrubPersonal(text).replace(/[ \t]+/g, " ").trim().slice(0, 1500);
+}
+export async function extractRemote(endpoint, installId, text, today, { timeoutMs = 45000 } = {}) { // 11/6: 서버가 잘린 답을 한 번 더 받는 시간까지
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {

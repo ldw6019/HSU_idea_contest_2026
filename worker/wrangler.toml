@@ -31,8 +31,15 @@ ASK_DAILY_PER_INSTALL = "20"
 CLASSIFY_DAILY_PER_INSTALL = "30"
 PER_MINUTE = "6"
 DAILY_COST_CAP_MICROUSD = "1000000"  # 하루 1달러를 넘으면 그날은 기본 답변 모드
-ASK_MAX_TOKENS = "400"
+ASK_MAX_TOKENS = "600"  # 600보다 작게 해도 600으로 씀 (짧으면 문장이 잘림)
 CLASSIFY_MAX_TOKENS = "700"
+
+# 11/6: IP별 1분 한도 (Cloudflare 요청 제한 기능, IP는 저장되지 않음). 학교 와이파이는 여러 학생이 같은 IP라 넉넉히 30회
+#  배포가 이 부분 때문에 실패하면(요금제·wrangler 버전 4.36 미만 등) 이 네 줄을 지우고 배포해도 됨 → 서버는 한도 없이 그대로 동작
+[[ratelimits]]
+name = "IP_LIMIT"
+namespace_id = "1001"
+simple = { limit = 30, period = 60 }
 
 [[d1_databases]]
 binding = "DB"

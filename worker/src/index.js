@@ -18,7 +18,7 @@ import { ASK_SYSTEM, ASK_TOOL, ASK_INTENTS, CLASSIFY_SYSTEM, CLASSIFY_TOOL, CATE
 
 const LIMITS = {
   questionChars: 200,
-  askBodyBytes: 32000, // 10/20: 16,000이면 실제 계정(비교과 30·할 일 40) 정보가 넘쳐 거절됐음. 확장도 14,000자로 맞춰 보냄
+  askBodyBytes: 20000, // 10/20: 16,000이면 실제 계정 정보가 넘쳐 거절됐음 → 확장이 14,000자로 맞춰 보내므로 11/6 20,000으로 (남용 1회 비용을 줄이려고)
   classifyChars: 8000,
   extractChars: 1500, // 11/2: 붙여 넣은 공지 글자 수
   titleChars: 120,
@@ -59,16 +59,18 @@ async function sha256(text) {
 
 /** 하루 한도 확인: 1인 횟수 + 전체 비용(백만분의 1달러) */
 async function checkQuota(store, env, kind, install) {
-  const perUser = Number(kind === "ask" ? env.ASK_DAILY_PER_INSTALL ?? 20 : env.CLASSIFY_DAILY_PER_INSTALL ?? 30);
-  const capMicro = Number(env.DAILY_COST_CAP_MICROUSD ?? 1_000_000); // 기본 하루 1달러
+  const perUser = kind === "ask" ? num(env.ASK_DAILY_PER_INSTALL, 20) : num(env.CLASSIFY_DAILY_PER_INSTALL, 30);
+  const capMicro = num(env.DAILY_COST_CAP_MICROUSD, 1_000_000); // 기본 하루 1달러
   if ((await store.peek(`cost:${day()}`)) >= capMicro) return { ok: false, reason: "global" };
   const minute = await store.incr(`rpm:${kind}:${install}`, 1, 60);
-  if (minute > Number(env.PER_MINUTE ?? 6)) return { ok: false, reason: "rate" };
+  if (minute > num(env.PER_MINUTE, 6)) return { ok: false, reason: "rate" };
   const n = await store.incr(`${kind}:${day()}:${install}`, 1, 2 * 86400);
   if (n > perUser) return { ok: false, reason: "user" };
   return { ok: true };
 }
-const recordCost = (store, r) => store.incr(`cost:${day()}`, r.cost, 2 * 86400);
+const recordCost = (store, r) => (r?.cost > 0 ? store.incr(`cost:${day()}`, r.cost, 2 * 86400) : null);
+// 11/6 검토: 설정 숫자를 잘못 쓰면(예: "1,000,000") NaN이 되어 한도가 조용히 꺼졌음 → 기본값으로
+const num = (v, d) => (Number.isFinite(Number(v)) && String(v ?? "").trim() !== "" ? Number(v) : d);
 
 // ---------- 입력 검사 ----------
 const str = (v, max) => typeof v === "string" && v.length <= max;
@@ -146,11 +148,16 @@ export function cleanAnswer(out, context) {
     .trim();
   message = dropRepeatedNames(message, context);
   if (message.length > 250) message = message.slice(0, 250).replace(/\{[a-z]?\d*$/, "").trimEnd() + "…";
+  // 11/6 검토: 링크·전화번호 문장을 지우기 전에 항목 번호를 모아 둔다 (예전엔 그 문장에만 있던 항목이 사라져 "해당하는 항목이 없어요"가 됐음)
+  const before = [...message.matchAll(REF)].map((m) => m[1]);
   message = dropLinkSentences(message);
   const seen = new Set();
-  let picks = [...message.matchAll(REF)].map((m) => m[1]).filter((id) => !seen.has(id) && seen.add(id));
+  let picks = [...[...message.matchAll(REF)].map((m) => m[1]), ...before].filter((id) => !seen.has(id) && seen.add(id));
   if (!picks.length && Array.isArray(out.picks)) picks = out.picks.map((p) => p?.id).filter((id) => ids.has(id) && !seen.has(id) && seen.add(id));
   picks = picks.slice(0, 8).map((id) => ({ id }));
+  // 8개를 넘는 번호는 문장에서도 빼서 "그다음 는"처럼 구멍이 나지 않게
+  const kept = new Set(picks.map((p) => p.id));
+  message = message.replace(REF, (all, id) => (kept.has(id) ? all : "")).replace(/\s{2,}/g, " ").trim();
   if (!message) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요."; // 링크 문장을 빼고 나니 비었을 때
   // 모델이 일정 질문으로 판단하고도 문장에 코드·번역문 같은 걸 끼워 넣으면 버리고 정해진 문구로 (10/20)
   if (looksOffTopic(message)) message = picks.length ? "아래 항목부터 확인해 보세요." : "해당하는 항목이 없어요.";
@@ -199,15 +206,34 @@ function cleanClassify(out) {
 
 // ---------- 요청 처리 ----------
 export async function handle(req, env, { store }) {
-  const url = new URL(req.url);
   const c = cors(env, req);
+  try {
+    return await route(req, env, store, c);
+  } catch (err) {
+    // 11/6 검토: 저장소(D1) 오류 등이 CORS 머리 없이 500으로 나가 확장이 "연결 안 됨"으로만 알았음
+    console.log(JSON.stringify({ ev: "server_error", info: String(err?.message || err).slice(0, 160) }));
+    return json(503, { error: "server", mode: "template" }, c.headers);
+  }
+}
+
+async function route(req, env, store, c) {
+  const url = new URL(req.url);
   if (req.method === "OPTIONS") return new Response(null, { status: c.ok ? 204 : 403, headers: c.headers });
   if (!c.ok) return json(403, { error: "origin" });
+
+  // 11/6 검토·사용자: IP별 1분 한도 (Cloudflare 요청 제한 기능, IP는 저장하지 않음). 출처·설치 번호는 흉내 낼 수 있어서
+  //  한 곳에서 설치 번호를 바꿔 가며 하루 비용 상한을 바닥내는 것을 막는다. 학교 와이파이는 여러 학생이 같은 IP라 1분 한도만 (하루 한도는 안 함)
+  if (env.IP_LIMIT && req.method === "POST") {
+    const { success } = await env.IP_LIMIT.limit({ key: req.headers.get("cf-connecting-ip") || "unknown" });
+    if (!success) return json(429, { error: "limit", reason: "rate", mode: "template" }, c.headers);
+  }
 
   const install = req.headers.get("x-hsup-install") || "";
   if (!/^[0-9a-f-]{16,64}$/i.test(install)) return json(400, { error: "install" }, c.headers);
 
   // 이미 처리한 안내문 결과 조회 (AI 호출 없음)
+  // 11/6 검토: 확장이 쓰지 않는 안내문 분류는 꺼 둔다 (누구나 부를 수 있고, 서버에 결과를 저장하는 유일한 곳이었음). 쓰려면 CLASSIFY_ENABLED = "1"
+  if (url.pathname.startsWith("/v1/classify") && env.CLASSIFY_ENABLED !== "1") return json(404, { error: "not_found" }, c.headers);
   const m = /^\/v1\/classify\/([0-9a-f]{64})$/.exec(url.pathname);
   if (req.method === "GET" && m) {
     const hit = await store.getClassify(m[1]);
@@ -215,6 +241,7 @@ export async function handle(req, env, { store }) {
   }
   if (req.method !== "POST") return json(404, { error: "not_found" }, c.headers);
 
+  if (Number(req.headers.get("content-length") || 0) > LIMITS.askBodyBytes * 3) return json(413, { error: "too_large" }, c.headers); // 다 읽기 전에 (한글 1자 = 3바이트)
   const raw = await req.text();
   if (raw.length > LIMITS.askBodyBytes) return json(413, { error: "too_large" }, c.headers);
   let body;
@@ -240,6 +267,7 @@ export async function handle(req, env, { store }) {
       console.log(JSON.stringify({ ev: "ask_ok", colo: req.cf?.colo || null })); // 내용 없이 처리한 곳만
       return json(200, { ...cleanAnswer(r.output, body.context), model: r.model }, c.headers);
     } catch (err) {
+      await recordCost(store, { cost: err?.spentMicro }).catch(() => {}); // 실패했어도 돈이 든 시도는 상한에 넣음
       const code = errorCode(err);
       // wrangler tail로 원인을 볼 수 있게 (질문·학생 정보는 남기지 않고 오류 종류만)
       // colo = 이 요청을 처리한 Cloudflare 데이터센터(예: ICN 서울, NRT 도쿄, HKG 홍콩). 지역 차단 확인용
@@ -261,6 +289,7 @@ export async function handle(req, env, { store }) {
       console.log(JSON.stringify({ ev: "extract_ok", colo: req.cf?.colo || null }));
       return json(200, { ...cleanExtract(r.output), model: r.model }, c.headers);
     } catch (err) {
+      await recordCost(store, { cost: err?.spentMicro }).catch(() => {}); // 실패했어도 돈이 든 시도는 상한에 넣음
       const code = errorCode(err);
       console.log(JSON.stringify({ ev: "extract_model_error", code, status: err?.status || null }));
       return json(502, { error: "model", reason: code }, c.headers);
@@ -284,6 +313,7 @@ export async function handle(req, env, { store }) {
       await store.putClassify(hash, programId, result, r.model);
       return json(200, { hash, cached: false, result, model: r.model }, c.headers);
     } catch (err) {
+      await recordCost(store, { cost: err?.spentMicro }).catch(() => {}); // 실패했어도 돈이 든 시도는 상한에 넣음
       const code = errorCode(err);
       console.log(JSON.stringify({ ev: "classify_model_error", code, status: err?.status || null, detail: err?.detail || null }));
       return json(502, { error: "model", reason: code }, c.headers);

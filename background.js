@@ -84,11 +84,17 @@ async function getTimetable({ force = false } = {}) {
 
 // 화면이 다른 학교 사이트의 페이지 글을 요청할 때 대신 받아 준다.
 // 허용된 학교 주소만, GET만 받는다 (확장이 아무 사이트나 부르는 통로가 되지 않게).
-const ALLOWED_HOSTS = new Set(["hsportal.hansung.ac.kr", "info.hansung.ac.kr", "learn.hansung.ac.kr", "www.hansung.ac.kr"]);
+// 11/6 검토: 화면이 실제로 쓰는 주소 앞부분만 허용 (종합정보·e클래스는 여기로 받지 않음 — 시간표는 이 파일 안에서, e클래스는 화면이 직접)
+//  성적·등록금이 있는 종합정보를 이 통로로 읽을 수 없게
+const ALLOWED_PATHS = {
+  "hsportal.hansung.ac.kr": ["/ko/program/", "/ko/mypage/", "/ko/module/eco/@poll/write/"],
+  "www.hansung.ac.kr": ["/schdulMng/", "/hansung/6096/"],
+};
 const PUBLIC_HOSTS = new Set(["www.hansung.ac.kr"]);
 async function fetchText({ url }) {
   const u = new URL(url);
-  if (u.protocol !== "https:" || !ALLOWED_HOSTS.has(u.host)) throw new Error("허용되지 않은 주소");
+  const okPath = (ALLOWED_PATHS[u.host] || []).some((pre) => u.pathname.startsWith(pre) || `${u.pathname}/` === pre);
+  if (u.protocol !== "https:" || u.username || u.password || !okPath) throw new Error("허용되지 않은 주소");
   // 학교 홈페이지(학사일정)는 공개 화면이라 로그인 정보(쿠키)를 보내지 않는다 (10/20)
   const res = await fetch(u.href, { credentials: PUBLIC_HOSTS.has(u.host) ? "omit" : "include", cache: "no-store", signal: AbortSignal.timeout(15000) }); // 10/23: 응답 없으면 15초 뒤 포기
   const buf = await res.arrayBuffer();
@@ -141,8 +147,10 @@ const HANDLERS = {
   aiExtract: (msg) => aiExtract(msg),
 };
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  const handler = HANDLERS[msg?.type];
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // 11/6 검토: 이 확장의 화면(e클래스 탭)에서 온 요청만 받는다
+  if (sender?.id !== chrome.runtime.id || (sender.url && !/^https:\/\/learn\.hansung\.ac\.kr\//.test(sender.url))) return false;
+  const handler = Object.hasOwn(HANDLERS, msg?.type) ? HANDLERS[msg.type] : null;
   if (!handler) return false;
   handler(msg).then(sendResponse, (err) => sendResponse({ ok: false, error: toPlainError(err) }));
   return true; // 비동기 응답

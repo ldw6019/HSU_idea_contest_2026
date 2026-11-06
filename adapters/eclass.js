@@ -18,8 +18,26 @@ export function useDemo(fn) {
   demoHtml = fn;
 }
 
+// 11/6 검토: 과목 3개 × 페이지 4개가 한꺼번에 나가 동시 요청이 12~18개였음 → 이 파일의 모든 요청을 최대 4개씩
+const MAX_PARALLEL = 4;
+let active = 0;
+const waiting = [];
+async function slot(fn) {
+  if (active >= MAX_PARALLEL) await new Promise((ok) => waiting.push(ok));
+  active++;
+  try {
+    return await fn();
+  } finally {
+    active--;
+    waiting.shift()?.();
+  }
+}
+
 async function getDoc(path) {
   if (demoHtml) return new DOMParser().parseFromString(demoHtml(BASE + path), "text/html");
+  return slot(() => fetchDoc(path));
+}
+async function fetchDoc(path) {
   // 10/23: 응답이 없으면 15초 뒤 포기, 로그인이 풀려 로그인 화면이 오면 "로그인 필요"로 (빈 목록으로 오해하지 않게)
   const res = await fetch(BASE + path, { credentials: "include", cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
   if (!res.ok) throw new Error(`e클래스 요청 실패 (${res.status})`);
@@ -103,7 +121,9 @@ export function parseProgress(doc) {
     const firstText = timeCell ? [...timeCell.childNodes].find((n) => n.nodeType === 3 && n.textContent.trim()) : null;
     const learnedSec = firstText ? parseDuration(firstText.textContent) : null;
     const attended = text(cells[ti + 2]) === "O";
-    map.set(norm(title), { learnedSec: learnedSec || 0, attended });
+    // 11/6 검토: 제목이 같은 영상이 둘 이상이면 어느 진도인지 알 수 없으니 "확인 불가"로 (예전엔 마지막 줄이 덮어써 들은 영상이 결석으로 보였음)
+    const k = norm(title);
+    map.set(k, map.has(k) ? { dup: true } : { learnedSec: learnedSec || 0, attended });
   }
   return map;
 }
@@ -153,12 +173,17 @@ export function parseQuizIndex(doc) {
  * "종료됨"인 응시가 하나라도 있으면 푼 것으로 본다. 표가 없으면 아직 응시 안 함.
  */
 export function parseQuizDone(doc) {
+  return parseQuizState(doc).done;
+}
+/** 11/6: 응시 상태 { done: 낸 응시가 있음, inProgress: 시작만 하고 안 낸 응시가 있음 } */
+export function parseQuizState(doc) {
   const table = doc.querySelector("table.quizattemptsummary");
-  if (!table) return false;
+  if (!table) return { done: false, inProgress: false };
   const heads = [...table.querySelectorAll("thead th")].map((th) => text(th));
   const col = heads.findIndex((h) => /진행|상태|state/i.test(h));
-  if (col < 0) return false;
-  return [...table.querySelectorAll("tbody tr")].some((tr) => /종료|finished/i.test(text(tr.children[col])));
+  if (col < 0) return { done: false, inProgress: false };
+  const states = [...table.querySelectorAll("tbody tr")].map((tr) => text(tr.children[col]));
+  return { done: states.some((t) => /종료|finished/i.test(t)), inProgress: states.some((t) => /진행\s*중|in\s*progress/i.test(t)) };
 }
 
 function videoStatus(v, prog, now, unknown) {
@@ -179,8 +204,10 @@ export async function fetchCourseItems(course, now = new Date()) {
 
   const progress = progressDoc ? parseProgress(progressDoc) : new Map();
   const videos = parseVideos(viewDoc).map((v) => {
-    const p = progress.get(norm(v.name));
-    const progressUnknown = progress.size === 0; // 온라인출석부를 못 읽음 (표가 없거나 요청 실패)
+    const got = progress.get(norm(v.name));
+    const p = got?.dup ? undefined : got;
+    // 온라인출석부를 못 읽었거나(표 없음·요청 실패), 이 영상을 표에서 못 찾았거나, 같은 제목이 여러 개면 "확인 불가" (11/6: 결석으로 단정하지 않게)
+    const progressUnknown = progress.size === 0 || !p;
     // 10/29: 진도 % = 출석 기준(영상 길이의 90%) 대비, 100% 넘지 않게 (강의실 표시와 같은 숫자)
     const ratio = v.lengthSec && p ? Math.min(100, Math.round((p.learnedSec / (v.lengthSec * 0.9)) * 1000) / 10) : null;
     return makeItem({

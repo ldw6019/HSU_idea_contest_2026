@@ -5,7 +5,7 @@ import { MemoryStore } from "../src/store.js";
 const ORIGIN = "chrome-extension://testext";
 const INSTALL = "0123456789abcdef0123";
 let mockOut = null;
-const env = { AI_PROVIDER: "mock", ALLOWED_ORIGINS: ORIGIN, ASK_DAILY_PER_INSTALL: "3", PER_MINUTE: "100", DAILY_COST_CAP_MICROUSD: "1000000", MOCK: async () => mockOut };
+const env = { AI_PROVIDER: "mock", ALLOWED_ORIGINS: ORIGIN, ASK_DAILY_PER_INSTALL: "3", PER_MINUTE: "100", DAILY_COST_CAP_MICROUSD: "1000000", CLASSIFY_ENABLED: "1", MOCK: async () => mockOut };
 let store = new MemoryStore();
 const call = (path, body, { method = "POST", origin = ORIGIN, install = INSTALL, raw } = {}) =>
   handle(new Request(`https://w.example${path}`, { method, headers: { origin, "x-hsup-install": install, "content-type": "application/json" }, body: method === "POST" ? raw ?? JSON.stringify(body) : undefined }), env, { store }).then(async (r) => ({ status: r.status, body: await r.json().catch(() => null) }));
@@ -162,6 +162,35 @@ r = await call("/v1/classify", { programId: "1", text: "아주 짧지 않은 안
 check("분류 형식 틀리면 502", r.status === 502);
 r = await call("/v1/classify", { programId: "abc", text });
 check("프로그램 번호 형식 검사", r.status === 400);
+
+// 11/6 검토 반영
+{
+  // 분류는 기본으로 꺼짐
+  const off = { ...env, CLASSIFY_ENABLED: undefined };
+  const rr = await handle(new Request("https://w.example/v1/classify", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL }, body: JSON.stringify({ programId: "1", text: "x".repeat(30) }) }), off, { store: new MemoryStore() });
+  check("분류는 기본으로 꺼짐 (404)", rr.status === 404);
+  // 설정 숫자가 이상해도 한도가 꺼지지 않음
+  const bad = { ...env, ASK_DAILY_PER_INSTALL: "1,000", PER_MINUTE: "abc" };
+  const st = new MemoryStore();
+  mockOut = { intent: "today", picks: [], message: "ok" };
+  let last = 0;
+  for (let i = 0; i < 25; i++) last = (await handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL }, body: JSON.stringify({ question: "요약", context }) }), bad, { store: st })).status;
+  check("이상한 설정값 → 기본 한도 (20회 넘으면 429)", last === 429);
+  // IP별 1분 한도 (바인딩이 있을 때만)
+  let n = 0;
+  const lim = { ...env, IP_LIMIT: { limit: async () => ({ success: ++n <= 2 }) } };
+  const ask = () => handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL, "cf-connecting-ip": "1.2.3.4" }, body: JSON.stringify({ question: "요약", context }) }), lim, { store: new MemoryStore() }).then((r) => r.status);
+  check("IP 한도 안 → 200, 넘으면 429", (await ask()) === 200 && (await ask()) === 200 && (await ask()) === 429);
+  // 저장소 오류여도 CORS 머리와 함께 503
+  const broken = { incr: async () => { throw new Error("d1 down"); }, peek: async () => { throw new Error("d1 down"); } };
+  const br = await handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL }, body: JSON.stringify({ question: "요약", context }) }), env, { store: broken });
+  check("저장소 오류 → 503 + CORS", br.status === 503 && br.headers.get("access-control-allow-origin") === ORIGIN);
+  // 링크 문장을 지워도 항목은 남음
+  store = new MemoryStore();
+  mockOut = { intent: "week", picks: [], message: "{t1} 기간은 학교 홈페이지(hansung.ac.kr)에서도 볼 수 있어요" };
+  const lr = await call("/v1/ask", { question: "이번 주 뭐 있어?", context });
+  check("링크 문장을 지워도 항목 칩은 남음", lr.status === 200 && lr.body.picks.some((p) => p.id === "t1") && !/hansung/.test(lr.body.message));
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
