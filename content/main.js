@@ -2127,7 +2127,9 @@
   //  e클래스 사용자 번호는 저장하지 않고, 되돌릴 수 없는 짧은 값(해시)만 비교한다. 번호를 못 찾으면 아무것도 안 함
   async function whoCheck(cache) {
     try {
-      const a = document.querySelector('a[href*="/user/profile.php?id="], a[href*="/user/view.php?id="]');
+      // 11/6 실제 화면 확인: 첫 화면엔 profile.php 링크가 없고, 오른쪽 위 사용자 메뉴에 "/user/edit.php?id=본인번호"가 있다
+      //  (과목 페이지의 user/view.php 링크는 교수·다른 학생일 수 있어서 쓰지 않음)
+      const a = document.querySelector('.usermenu a[href*="/user/edit.php?id="], [class*="user-info"] a[href*="/user/edit.php?id="]');
       const id = a && /[?&]id=(\d+)/.exec(a.getAttribute("href") || "")?.[1];
       if (!id) return;
       const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hsuplus-who:${id}`));
@@ -2508,7 +2510,9 @@
         el("p", { class: "pt-note", text: note }),
       ]),
       // 10/29 사용자: 학기별 숫자·내역은 접어 둔다 (한 화면에 숫자가 너무 많았음)
-      el("details", { class: "pt-more" }, [el("summary", { text: "학기별 점수·최근 내역 보기" }), el("div", { class: "pt-stats" }, stats), pointHistory(S.recent, "최근 포인트 내역")]),
+      // 11/6: 학교 공지("비교과교육과정 및 비교과 포인트 신청 안내") 기준 8학기차·졸업수료생·초과학기는 학기당 400점. 학년은 읽지 않으므로 안내만
+      el("details", { class: "pt-more" }, [el("summary", { text: "학기별 점수·최근 내역 보기" }), el("div", { class: "pt-stats" }, stats), pointHistory(S.recent, "최근 포인트 내역"),
+        el("p", { class: "pt-note", text: `8학기차·졸업수료생·초과학기 재학생은 한 학기 400점까지 인정돼요(학교 안내). 이 계산은 ${PT.SEM_CAP}점 기준이라 그 경우엔 학교 포인트 화면을 함께 확인해 주세요.` })]),
     ]);
   }
   // 졸업 요건(800점)을 이미 채운 사람: 게이지 없이 점수와 이번 학기 모은 점수만 (장학금 경쟁 등)

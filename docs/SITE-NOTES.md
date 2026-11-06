@@ -14,6 +14,7 @@
 - 과제 목록 `/mod/assign/index.php?id={courseId}`: `table.generaltable` → 주 | 과제 | 종료 일시 | 제출 | 성적
 - 온라인출석부 `/report/ubcompletion/progress.php?id={courseId}`
   - `table.user_progress_table` → 주차 | 강의 자료 | 총 학습시간 | 출석 | 주차 출석
+  - (11/6 실제 화면 확인) 일부 과목(영상 기간이 학기 끝·다음 해까지인 과목)은 progress.php가 `user_progress.php`로 넘어가고 표가 `table.user_progress` → 주제 | 강의 자료 | 출석인정 요구시간 | 총 학습시간 (출석 O/X 칸 없음, 안 들은 영상은 총 학습시간 빈 칸). 위쪽 표에는 학번·이름·휴대 전화가 있으니 읽지 않음. 확장은 "총 학습시간 ≥ 요구시간"을 출석으로 봄
   - ⚠️ 페이지 상단 표에 학번·이름·전화번호가 있음. 이 표는 읽지 않는다.
 - 수강률 = 출석부 학습 시간 ÷ 영상 길이
 

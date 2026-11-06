@@ -3,7 +3,7 @@
 // - 수강 과목: 메인 화면의 강좌 목록 (교과만)
 // - 강의 영상: 과목 페이지의 동영상 항목 (수강 기간, 길이) + 온라인출석부 (학습 시간, 출석)
 // - 과제: 과목별 과제 목록 (종료 일시, 제출 여부). 성적 칸은 읽지 않는다.
-// - 온라인출석부 위쪽의 개인정보 표는 읽지 않고, 진도 표(user_progress_table)만 읽는다.
+// - 온라인출석부 위쪽의 개인정보 표는 읽지 않고, 진도 표(user_progress_table, 또는 다른 모양 user_progress)만 읽는다.
 
 import { makeItem, SOURCE, TYPE, STATUS } from "../core/model.js";
 import { ParseError, LoginRequiredError } from "../core/errors.js";
@@ -111,7 +111,7 @@ export function parseVideos(doc) {
 export function parseProgress(doc) {
   const table = doc.querySelector("table.user_progress_table");
   const map = new Map();
-  if (!table) return map;
+  if (!table) return parseUserProgress(doc, map);
   for (const tr of table.querySelectorAll("tbody tr")) {
     const cells = [...tr.children];
     const ti = cells.findIndex((td) => td.classList.contains("text-left"));
@@ -124,6 +124,24 @@ export function parseProgress(doc) {
     // 11/6 검토: 제목이 같은 영상이 둘 이상이면 어느 진도인지 알 수 없으니 "확인 불가"로 (예전엔 마지막 줄이 덮어써 들은 영상이 결석으로 보였음)
     const k = norm(title);
     map.set(k, map.has(k) ? { dup: true } : { learnedSec: learnedSec || 0, attended });
+  }
+  return map;
+}
+
+// 11/6 실제 화면 확인: 일부 과목(영상 기간이 학기 끝이나 다음 해까지인 과목)은 progress.php가
+// user_progress.php로 넘어가고 표 모양이 다르다 → 주제 | 강의 자료 | 출석인정 요구시간 | 총 학습시간 (출석 O/X 칸 없음).
+// 이때는 "총 학습시간 ≥ 출석인정 요구시간"을 출석으로 본다. 위쪽 개인정보 표는 읽지 않는다.
+function parseUserProgress(doc, map) {
+  const table = doc.querySelector("table.user_progress");
+  if (!table) return map;
+  for (const tr of table.querySelectorAll("tbody tr")) {
+    const cells = [...tr.children];
+    const ti = cells.findIndex((td) => td.classList.contains("text-left"));
+    if (ti < 0) continue;
+    const k = norm(text(cells[ti]));
+    const requiredSec = parseDuration(text(cells[ti + 1]));
+    const learnedSec = parseDuration(text(cells[ti + 2])) || 0; // 빈 칸 = 아직 안 들음
+    map.set(k, map.has(k) ? { dup: true } : { learnedSec, attended: requiredSec != null && requiredSec > 0 && learnedSec >= requiredSec });
   }
   return map;
 }
