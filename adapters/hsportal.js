@@ -333,11 +333,16 @@ export function mergeSameProgram(list) {
   return [...byKey.values()];
 }
 
+/** 설문 하나를 가리키는 값 (설문 화면 주소의 두 번호) */
+export const pollKey = (p) => `${p.poll.pidx}/${p.poll.tidx}`;
+
 /**
  * 내 비교과 전체: 포인트, 시작 대기·진행 중(회차 일정 포함), 설문을 아직 안 낸 종료 프로그램(종료 목록 1쪽)
  * @param {(url: string) => Promise<string>} getText
+ * @param {{ answered?: Iterable<string> }} [opts] answered: 낸 것으로 이미 확인한 설문(pollKey) — 다시 열지 않음
+ * @returns 끝의 answeredPolls = 지금 종료 목록에서 낸 것으로 확인된 설문 (화면이 저장해 두었다가 다음에 answered로 넘김)
  */
-export async function fetchMyPrograms(getText, now = new Date()) {
+export async function fetchMyPrograms(getText, now = new Date(), { answered = [] } = {}) {
   const list = (kind) => getText(`${BASE}/ko/mypage/programs/list/${kind}/1`).then(parseMyList);
   const [wait, progress, done, points] = await Promise.all([list("wait"), list("progress"), list("complete"), fetchPoints(getText)]);
 
@@ -361,11 +366,18 @@ export async function fetchMyPrograms(getText, now = new Date()) {
   //  미이수는 제외 (설문을 내도 의미가 없음)
   const eligible = (p) => /처리중/.test(p.issuance) || /^이수\s*\d/.test(p.issuance);
   const cand = done.filter((p) => p.poll?.enabled && p.poll.pidx && p.poll.tidx && eligible(p));
-  const checks = await runLimited(cand.map((p) => () => getText(`${BASE}/ko/module/eco/@poll/write/${p.poll.pidx}/${p.poll.tidx}`).then(pollAnswered)), 2);
-  const surveys = cand
-    .map((p, i) => ({ ...p, answered: checks[i].ok ? checks[i].value : null }))
+  // 11/7 검토: 내 비교과를 새로 불러올 때마다(1시간) 이미 낸 설문까지 설문 작성 화면을 다시 열었음 (학교 기록에 "봤음"이 남을 수 있음)
+  //  → 낸 것으로 확인된 설문은 다시 열지 않는다 (과제·퀴즈의 "끝난 것 저장"과 같은 방식). 낸 설문이 다시 "안 냄"이 되지는 않으므로 영구
+  //  안 낸 것·확인 못 한 것(오류)만 다시 연다
+  const known = new Set(answered);
+  const toOpen = cand.filter((p) => !known.has(pollKey(p)));
+  const checks = await runLimited(toOpen.map((p) => () => getText(`${BASE}/ko/module/eco/@poll/write/${p.poll.pidx}/${p.poll.tidx}`).then(pollAnswered)), 2);
+  const opened = new Map(toOpen.map((p, i) => [p, checks[i].ok ? checks[i].value : null]));
+  const withState = cand.map((p) => ({ ...p, answered: known.has(pollKey(p)) ? true : opened.get(p) }));
+  const surveys = withState
     .filter((p) => p.answered === false)
     .map(({ poll, ...p }) => ({ ...p, listUrl: `${BASE}/ko/mypage/programs/list/complete/1` }));
+  const answeredPolls = withState.filter((p) => p.answered === true).map(pollKey);
 
-  return { points, programs, surveys, checkedSurveys: cand.length };
+  return { points, programs, surveys, checkedSurveys: cand.length, answeredPolls };
 }

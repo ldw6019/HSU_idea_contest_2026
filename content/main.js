@@ -323,12 +323,26 @@
   // 항목 하나 = sync 키 하나 ("hide|항목id": 숨긴 시각). 두 기기에서 따로 바꿔도 키마다 합쳐져서 서로 덮어쓰지 않는다.
   // sync 한도: 키 512개, 전체 100KB, 분당 쓰기 120회 → 바뀐 것을 모아 0.5초 뒤 한 번에 쓴다.
   // 크롬에 로그인 안 했거나 동기화를 꺼 두면 sync도 이 브라우저에만 남는다(나중에 켜면 그때 합쳐짐).
+  // 11/7 공용 PC(사용자 결정): 이 크롬의 주인이 아닌 e클래스 계정이면 '손님 모드' — sync 개인 항목을 읽지도 쓰지도 않고,
+  //  손님 설정은 chrome.storage.local의 "guest|ns|id"에 둔다 (사용자가 바뀌면 학교 데이터 저장본과 함께 지워짐). 판단은 core/who.js
+  //  주인·손님을 정하기 전(userReady 전)에는 읽지도 쓰지도 않는다 (손님에게 주인 설정이 잠깐이라도 보이지 않게)
+  let userGuest = false;
+  let userPfx = ""; // 손님이면 who.GUEST_PREFIX
+  let userReady = false;
+  let userBlocked = false; // 앞 손님 설정을 지우지 못한 손님: 읽지 않음
+  let userKnown = false; // 이 화면의 e클래스 사용자를 확인함 (사용자 메뉴를 찾음). 못 하면 '내 데이터 모두 지우기'가 sync를 건드리지 않음
+  let userStale = false; // 이 화면을 연 뒤 다른 탭에서 다른 계정이 로그인함(local ui:who 바뀜): 내 설정을 비우고 읽기·쓰기를 멈춤
+  let userReadyDone;
+  const userReadyP = new Promise((r) => (userReadyDone = r));
+  const userArea = () => (userGuest ? chrome.storage.local : chrome.storage.sync);
   const pending = { set: {}, remove: new Set() };
   let flushTimer = null;
   function flushUser() {
     flushTimer = null;
-    const set = pending.set;
-    const remove = [...pending.remove];
+    if (userStale) return void ((pending.set = {}), (pending.remove = new Set())); // 다른 계정이 로그인한 뒤 남은 화면: 쓰지 않음
+    if (!userReady) return void (flushTimer = setTimeout(flushUser, 300)); // 주인·손님을 정한 뒤에 쓴다
+    const set = Object.fromEntries(Object.entries(pending.set).map(([k, v]) => [userPfx + k, v]));
+    const remove = [...pending.remove].map((k) => userPfx + k);
     pending.set = {};
     pending.remove = new Set();
     const fail = (e) => {
@@ -338,34 +352,43 @@
       showSaveWarn(full ? "저장 공간(크롬 동기화)이 가득 차서 방금 바꾼 내용을 저장하지 못했어요. 지난 직접 일정을 지우거나, 백업 저장 후 '내 데이터 모두 지우기'를 해 주세요." : "방금 바꾼 내용을 저장하지 못했어요. 페이지를 새로고침한 뒤 다시 해 주세요.");
     };
     try {
-      if (Object.keys(set).length) chrome.storage.sync.set(set).catch(fail);
-      if (remove.length) chrome.storage.sync.remove(remove).catch(fail);
+      const area = userArea();
+      if (Object.keys(set).length) area.set(set).catch(fail);
+      if (remove.length) area.remove(remove).catch(fail);
     } catch (e) {
       fail(e);
     }
   }
   /** 내 설정 묶음(ns) 전체 읽기 → { id: 값 }. legacyKey: 예전 버전이 이 브라우저에만 저장하던 키 (한 번 옮기고 지움) */
+  // 공용 PC(11/7 검토 버그 2): 사용자가 바뀌어 화면 메모리를 비울 때마다 1 올린다 (whoCheck).
+  //  비우기 전에 읽은 앞 사람 값이 비운 뒤에 도착하면 버린다. 11/7 아침부터 userMap은 주인·손님을 정한 뒤(userReadyP)에 읽어서
+  //  보통은 겹치지 않지만, 순서가 바뀌어도 앞 사람 값이 다시 들어오지 않게 그대로 둔다
+  let userGen = 0;
   async function userMap(ns, legacyKey) {
     if (await demoReady) return ns === "ev" ? { ...DEMO.userEvents } : {}; // 시연 모드: 내 설정 대신 가짜 일정만
+    await userReadyP; // 주인(sync)·손님(local guest|)을 정한 뒤에 읽는다
+    if (userBlocked || userStale) return {};
+    const gen = userGen;
     const out = {};
+    const pfx = `${userPfx}${ns}|`;
     try {
-      const all = await chrome.storage.sync.get(null);
-      for (const [k, v] of Object.entries(all)) if (k.startsWith(`${ns}|`)) out[k.slice(ns.length + 1)] = v;
+      const all = await userArea().get(null);
+      for (const [k, v] of Object.entries(all)) if (k.startsWith(pfx)) out[k.slice(pfx.length)] = v;
     } catch {}
-    if (legacyKey) {
+    if (legacyKey && !userGuest && gen === userGen) { // 예전 키 옮기기는 주인(또는 사용자 확인 못 함)일 때만
       try {
         const old = (await chrome.storage.local.get(legacyKey))[legacyKey];
-        if (old && typeof old === "object") {
+        if (gen === userGen && old && typeof old === "object") {
           for (const [id, v] of Object.entries(old)) if (!(id in out)) userPut(ns, id, (out[id] = v));
           chrome.storage.local.remove(legacyKey).catch(() => {});
         }
       } catch {}
     }
-    return out;
+    return gen === userGen && !userStale ? out : {}; // 읽는 사이에 사용자가 바뀜 → 앞 사람 값이라 버림
   }
   /** 항목 하나 저장 (value가 null이면 지움) */
   function userPut(ns, id, value) {
-    if (DEMO) return; // 시연 모드에서 바꾼 건 저장하지 않음 (끄면 원래대로)
+    if (DEMO || userStale) return; // 시연 모드에서 바꾼 건 저장하지 않음 (끄면 원래대로) / 다른 계정이 로그인한 뒤 남은 화면도
     const k = `${ns}|${id}`;
     if (value == null) {
       delete pending.set[k];
@@ -380,11 +403,13 @@
   function onUserChange(ns, fn) {
     try {
       chrome.storage.onChanged.addListener((changes, area) => {
-        if (area !== "sync" || DEMO) return; // 11/6: 시연 중엔 다른 기기에서 바꾼 실제 설정을 섞지 않음
+        if (DEMO || !userReady || userStale) return; // 11/6: 시연 중엔 다른 기기에서 바꾼 실제 설정을 섞지 않음
+        if (area !== (userGuest ? "local" : "sync")) return; // 11/7: 손님 모드에선 주인의 다른 기기에서 온 sync 변경도 섞지 않음
+        const pfx = `${userPfx}${ns}|`;
         let hit = false;
         for (const [k, c] of Object.entries(changes)) {
-          if (!k.startsWith(`${ns}|`)) continue;
-          fn(k.slice(ns.length + 1), c.newValue);
+          if (!k.startsWith(pfx)) continue;
+          fn(k.slice(pfx.length), c.newValue);
           hit = true;
         }
         if (hit) rerender();
@@ -1002,8 +1027,10 @@
     });
     return el("details", { class: "notice-box", open: f.noticeOpen ? "" : null, ontoggle: (e) => (f.noticeOpen = e.target.open) }, [
       el("summary", { text: "공지 붙여 넣어 AI로 채우기" }),
+      // 11/7 검토: 사람 이름은 자동으로 지우지 못함(전화·메일·링크·긴 번호만 지움) → 붙여 넣기 전에 지워 달라고 알림. 이름 자동 인식은 하지 않음
+      el("div", { class: "ev-hint notice-name", text: "사람 이름은 자동으로 지우지 못해요. 다른 사람 이름은 지우고 붙여 넣어 주세요." }),
       ta,
-      el("div", { class: "notice-row" }, [btn, el("span", { class: "ev-hint", text: "누를 때만 AI로 보내요 · 전화번호·메일·링크·계좌번호는 지우고 보내요 · 서버에 저장 안 해요" })]),
+      el("div", { class: "notice-row" }, [btn, el("span", { class: "ev-hint", text: "누를 때만 미국 AI 회사(Anthropic)로 보내요 · 전화번호·메일·링크·계좌번호는 지우고 보내요 · 우리 서버엔 저장 안 해요" })]),
       msg,
       found,
     ]);
@@ -1702,7 +1729,8 @@
     rerender();
   }
   // 11/6 검토: 화면 읽기 프로그램에 무엇을 숨기는지 들리게 (name)
-  const hideBtn = (id, name = "", msg = "숨겼어요. 캘린더·AI에서도 빠져요.", title = "숨기기 (내 크롬 계정에서 모두 적용)") =>
+  // 11/7: 손님 모드에선 숨김이 이 기기(local)에만 잠깐 저장돼서 툴팁도 그에 맞게 (기본값은 부를 때마다 계산)
+  const hideBtn = (id, name = "", msg = "숨겼어요. 캘린더·AI에서도 빠져요.", title = userGuest ? "숨기기 (이 기기에만 잠깐 적용)" : "숨기기 (내 크롬 계정에서 모두 적용)") =>
     el("button", {
       class: "hide-btn",
       title,
@@ -2121,29 +2149,81 @@
     import(chrome.runtime.getURL("core/points.js")),
     import(chrome.runtime.getURL("adapters/hansung.js")),
     import(chrome.runtime.getURL("core/config.js")),
-  ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung, config]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung, config }));
+    import(chrome.runtime.getURL("core/who.js")),
+  ]).then(([cache, eclass, hsportal, ai, classify, calendar, points, hansung, config, who]) => ({ cache, eclass, hsportal, ai, classify, calendar, points, hansung, config, who }));
   // 시연 모드면 저장(캐시)을 건너뛰고, e클래스·시간표를 가짜 HTML로 (학교에 요청 안 함)
   // 11/6 검토: 같은 크롬을 다른 학생이 쓰면(공용 PC) 앞 사람 캐시를 지운다.
   //  e클래스 사용자 번호는 저장하지 않고, 되돌릴 수 없는 짧은 값(해시)만 비교한다. 번호를 못 찾으면 아무것도 안 함
-  async function whoCheck(cache) {
+  // 11/7 검토: 캐시만 지워서 직접 넣은 일정·숨긴 항목·AI 설치 번호가 남았음
+  // 11/7 아침(사용자 결정): sync는 지우지 않고 숨긴다 — 이 크롬의 주인이 아니면 손님 모드(sync 개인 항목 안 읽음, 손님 설정은 local). 판단은 core/who.js
+  //  사용자가 바뀌면 학교 데이터 저장본·손님 설정·AI 설치 번호는 지운다. 번호를 못 찾으면 아무것도 안 바꿈(= sync 그대로)
+  // 11/7 검토 3: "주인 계정"이 크롬(구글) 계정으로 읽힐 수 있어서, 실제 뜻(이 크롬을 처음 쓴 e클래스 계정)대로
+  const GUEST_NOTE = "이 크롬을 처음 쓴 e클래스 계정이 아니어서, 직접 넣은 일정·숨긴 항목은 이 기기에만 잠깐 저장돼요.";
+  const STALE_NOTE = "다른 e클래스 계정으로 로그인돼서, 이 화면을 새로고침해 주세요. 새로고침 전까지 바꾼 것은 저장하지 않아요.";
+  // 11/7 검토 버그 1: 바뀐 것을 안 순간 화면 메모리부터 비운다 (저장소 지우기가 실패해도 앞 사람 일정이 화면·AI 전송에 남지 않게)
+  //  이미 읽어 둔 앞 사람 설정을 비우고, 예전 버전 키를 옮기려고 모아 둔 쓰기도 버린다 (지운 걸 다시 쓰지 않게)
+  //  userGen을 올려서, 그 전에 시작한 userMap 읽기 결과가 나중에 도착해도 버린다 (버그 2: 비운 뒤 앞 사람 값을 다시 채우던 경쟁)
+  const forgetPrev = () => {
+    userGen++;
+    clearTimeout(flushTimer);
+    flushTimer = null;
+    pending.set = {};
+    pending.remove = new Set();
+    events = {};
+    hidden = {};
+    opts = {};
+    courseColors = {};
+    applyWide();
+    rerender();
+  };
+  // 11/7 검토 3: 이 화면을 연 뒤 다른 탭에서 다른 e클래스 계정이 로그인하면(그 탭이 local ui:who를 바꿈), 이 화면은 앞 사람 것이 남은 채로 있었음
+  //  (그 화면에서 AI에 물으면 앞 사람 일정이 가고, 일정을 넣으면 앞 사람 sync에 써졌음) → 내 설정 메모리를 비우고 읽기·쓰기를 멈추고 알림 한 줄
+  //  사용자를 확인한 화면만 (확인 못 한 화면은 사용자 결정대로 그대로)
+  function watchWho(who, tag) {
+    try {
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area !== "local" || userStale || DEMO) return;
+        const c = changes[who.WHO_KEY];
+        if (!c || typeof c.newValue !== "string" || c.newValue === tag) return;
+        userStale = true;
+        forgetPrev();
+        showSaveWarn(STALE_NOTE);
+      });
+    } catch {}
+  }
+  async function whoCheck(who) {
     try {
       // 11/6 실제 화면 확인: 첫 화면엔 profile.php 링크가 없고, 오른쪽 위 사용자 메뉴에 "/user/edit.php?id=본인번호"가 있다
       //  (과목 페이지의 user/view.php 링크는 교수·다른 학생일 수 있어서 쓰지 않음)
       const a = document.querySelector('.usermenu a[href*="/user/edit.php?id="], [class*="user-info"] a[href*="/user/edit.php?id="]');
       const id = a && /[?&]id=(\d+)/.exec(a.getAttribute("href") || "")?.[1];
       if (!id) return;
-      const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`hsuplus-who:${id}`));
-      const tag = [...new Uint8Array(buf)].slice(0, 8).map((b) => b.toString(16).padStart(2, "0")).join("");
-      const { "ui:who": prev } = await chrome.storage.local.get("ui:who");
-      if (prev && prev !== tag) await cache.clearAll();
-      if (prev !== tag) await chrome.storage.local.set({ "ui:who": tag });
+      const tag = await who.userTag(id);
+      const r = await who.switchUser(tag, { onSwitch: forgetPrev }); // 바뀐 걸 알기 전에 실패하면 바깥 catch (지운 것도 비운 것도 없음)
+      userKnown = r.known;
+      watchWho(who, tag);
+      userGuest = r.guest;
+      userPfx = r.guest ? who.GUEST_PREFIX : "";
+      const warn = [r.guest && GUEST_NOTE];
+      if (r.clearError) {
+        console.warn("[HSU Plus] 앞 사람 데이터 지우기 실패", r.clearError);
+        // 손님끼리 바뀌었는데 앞 손님 설정(guest|)을 못 지웠으면, 이번엔 손님 설정을 읽지 않는다 (앞 손님 일정이 보이지 않게)
+        userBlocked = r.guest;
+        warn.push("이 크롬에서 다른 e클래스 계정이 로그인했는데, 앞 사람이 불러온 학교 데이터를 다 지우지 못했어요. 페이지를 새로고침하면 다시 지워요. 계속 이 알림이 뜨면 설정에서 '내 데이터 모두 지우기'를 눌러 주세요.");
+      }
+      if (warn.some(Boolean)) showSaveWarn(warn.filter(Boolean).join(" "));
     } catch {}
   }
-  const mods = Promise.all([realMods, demoReady, import(chrome.runtime.getURL("adapters/info.js"))]).then(async ([m, demo, info]) => {
-    if (!demo) {
-      await whoCheck(m.cache);
-      return m;
-    }
+  // 주인·손님 판단은 다른 모듈을 기다리지 않고 먼저 (내 설정 읽기 userMap이 이것을 기다림). 시연 모드는 하지 않음
+  const whoDone = demoReady
+    .then((demo) => (demo ? null : import(chrome.runtime.getURL("core/who.js")).then(whoCheck)))
+    .catch(() => {})
+    .finally(() => {
+      userReady = true;
+      userReadyDone();
+    });
+  const mods = Promise.all([realMods, demoReady, import(chrome.runtime.getURL("adapters/info.js")), whoDone]).then(async ([m, demo, info]) => {
+    if (!demo) return m; // 학교 데이터는 사용자 확인(앞 사람 저장본 지우기)이 끝난 뒤에 불러온다
     m.eclass.useDemo(demo.learnHtml);
     const demoDoc = new DOMParser().parseFromString(demo.mainPage, "text/html");
     return {
@@ -2220,9 +2300,16 @@
     rerender();
     try {
       const { cache, hsportal } = await mods;
-      let r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force });
+      // 11/7: 낸 것으로 확인된 설문은 저장해 두고 다시 열지 않는다 (cache: 키라 사용자 바뀜·"내 데이터 모두 지우기" 때 같이 지워짐)
+      const fetchMine = async () => {
+        const known = await cache.read("polls-answered").catch(() => null);
+        const out = await hsportal.fetchMyPrograms(getText, new Date(), { answered: Array.isArray(known?.data) ? known.data : [] });
+        await cache.write("polls-answered", out.answeredPolls || []);
+        return out;
+      };
+      let r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, fetchMine, { force });
       // 10/20: 포인트 내역(history)이 없는 예전 캐시면 바로 새로 받는다 (안 그러면 1시간 동안 "지난 학기 모은 점수 -")
-      if (r.fromCache && !Array.isArray(r.data?.points?.history)) r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, () => hsportal.fetchMyPrograms(getText), { force: true });
+      if (r.fromCache && !Array.isArray(r.data?.points?.history)) r = await cache.getOrFetch("programs-mine", cache.TTL.MYPROGRAMS, fetchMine, { force: true });
       mine = { ok: true, data: r.data, fetchedAt: r.fetchedAt, error: r.error ? plainErr(r.error) : null };
       classified.clear();
       ensureDetails(r.data.programs.map((p) => p.id)); // 매주 회차 판단용 안내문
@@ -3240,7 +3327,7 @@
     // 보낼 내용 보기: AI 연결 뒤 실제로 나가게 될 정보를 그대로 보여 준다 (지금은 아무것도 나가지 않음)
     const preview = el("details", { class: "ai-preview" }, [
       el("summary", { text: "AI에 보낼 내용 보기" }),
-      el("p", { class: "ai-note", text: AI_ENDPOINT ? "직접 쓴 질문을 보낼 때만 질문과 아래 내용을 보내요(위 버튼은 보내지 않아요). 이름·학번·성적·연락처는 보내지 않고, 서버는 저장하지 않아요." : "지금은 AI 연결 전이라 아무것도 밖으로 보내지 않아요. 연결되면 질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." }),
+      el("p", { class: "ai-note", text: AI_ENDPOINT ? "직접 쓴 질문을 보낼 때만 질문과 아래 내용을 보내요(위 버튼은 보내지 않아요). 이름·학번·성적·연락처는 보내지 않고, 우리 서버는 저장하지 않아요." : "지금은 AI 연결 전이라 아무것도 밖으로 보내지 않아요. 연결되면 질문할 때 아래 내용만 보내요. 이름·학번·성적·연락처는 보내지 않아요." }),
       el("ul", { class: "ai-sum" }),
       el("details", { class: "ai-raw" }, [el("summary", { text: "원본 그대로 보기" }), el("pre", { class: "ai-json" })]),
     ]);
@@ -3272,7 +3359,12 @@
     });
     if (aiPreviewOpen) mods.then(({ ai }) => fillPreview(ai));
 
-    content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, [presets, form, el("div", { class: "ai-foot" }, [counter, preview])])]));
+    // 11/7 검토(정보보안 관점): 화면에는 "서버는 저장하지 않아요"만 있고 어디로 가는지(국외)가 없었음 → 보내는 곳·보관 기간을 한 줄로
+    //  근거: docs/AI-SETUP.md "AI 회사로 간 내용은 어떻게 되나" (Anthropic 상용 API 정책, 11/2 확인). 모델을 바꾸면 이 문장도 바꿀 것
+    //  11/7 검토: "최대 30일 보관한 뒤 지우고"는 사실보다 강했음(정책 위반 조사 등은 최대 2년 보관, 30일은 "안에" 지우는 원칙)
+    //   → 팩트체크를 통과한 표현대로 "원칙적으로 30일 안에 … 예외는 회사 정책"
+    const abroad = AI_ENDPOINT ? el("p", { class: "ai-note", text: "직접 쓴 질문과 일정 정보는 미국 AI 회사(Anthropic)로 보내져 처리돼요. 그 회사는 원칙적으로 30일 안에 지우고 학습에 쓰지 않아요(정책 위반 조사 등 예외는 회사 정책을 따라요)." }) : null;
+    content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, [presets, form, el("div", { class: "ai-foot" }, [counter, preview]), abroad].filter(Boolean))]));
     if (scroll) log.lastElementChild?.scrollIntoView({ block: "nearest" });
   }
   // core/ai.js의 PRESETS와 같은 내용 (모듈을 불러오기 전에도 버튼을 그리려고 여기 둠)
@@ -3314,15 +3406,22 @@
     text: "내 데이터 모두 지우기",
     onclick: async () => {
       if (!wipeArmed) {
+        await userReadyP; // 11/7 검토 3: 주인/손님을 정한 뒤에 알맞은 문구를 (정하기 전엔 손님도 주인 문구가 나왔음)
+        if (userStale) return void (settingsNote.textContent = STALE_NOTE);
         wipeArmed = true;
         wipeBtn.textContent = "한 번 더 누르면 지워요";
-        settingsNote.textContent = "불러온 학교 데이터(캐시), 숨긴 항목, 과목 색, 직접 넣은 일정이 지워져요. 숨긴 항목·과목 색·직접 넣은 일정은 같은 구글 계정의 다른 크롬에서도 지워져요.";
+        settingsNote.textContent = userGuest
+          ? "불러온 학교 데이터(캐시)와 이 기기에 잠깐 저장한 숨긴 항목·과목 색·직접 넣은 일정이 지워져요. 이 크롬을 처음 쓴 e클래스 계정의 데이터는 건드리지 않아요."
+          : !userKnown && !DEMO
+            ? "e클래스 계정을 확인하지 못해서, 불러온 학교 데이터(캐시)만 지워요. 숨긴 항목·과목 색·직접 넣은 일정은 e클래스 첫 화면에서 지울 수 있어요."
+            : "불러온 학교 데이터(캐시), 숨긴 항목, 과목 색, 직접 넣은 일정이 지워져요. 숨긴 항목·과목 색·직접 넣은 일정은 같은 구글 계정의 다른 크롬에서도 지워져요.";
         return;
       }
       await wipeAll();
     },
   });
   async function wipeAll() {
+    await userReadyP; // 11/7 검토 3: 주인/손님을 정하기 전(userGuest가 아직 false)에 눌려도 손님이 주인 sync를 지우지 않게
     if (DEMO) {
       // 10/23: 시연 모드에서는 진짜 내 설정을 지우지 않는다 (시연 모드 = 내 설정을 건드리지 않음)
       settingsNote.textContent = "시연 모드에서는 지울 수 없어요. 시연 모드를 끈 뒤에 지워 주세요.";
@@ -3330,23 +3429,42 @@
       wipeBtn.textContent = "내 데이터 모두 지우기";
       return;
     }
+    if (userStale) {
+      settingsNote.textContent = STALE_NOTE; // 다른 계정이 로그인한 뒤 남은 화면: 누구 것을 지울지 몰라서 지우지 않음
+      wipeArmed = false;
+      wipeBtn.textContent = "내 데이터 모두 지우기";
+      return;
+    }
     try {
       await send({ type: "clearCache" });
+      // 11/7 검토: 전에는 local을 전부 지워서 사용자 표시(ui:who)까지 없어졌음 → 다음 학생이 로그인해도 "처음 쓰는 크롬"으로 보여
+      //  앞 사람(지운 뒤 다시 불러온 내 데이터)을 지우지 않았음. 공용 PC에서 지우기를 누르면 보호가 오히려 사라지던 것 → 표시는 남긴다
+      //  (표시는 되돌릴 수 없는 짧은 값이고, 페이지를 열 때 지금 로그인한 내 값으로 맞춰 둔 것 = 바로 아래에서 다시 불러올 데이터의 주인과 같음. 판단은 core/who.js)
+      // 11/7 아침(사용자 결정): 지금 사용자 범위만 지운다. 주인 표시(sync OWNER_KEY)도 남긴다 (SYNC_RE에 걸리지 않음)
+      //  주인: 기존대로 sync 개인 항목까지 = 주인 본인의 명시적 요청 / 손님: local(학교 데이터·손님 설정·AI 설치 번호)만
+      //  11/7 검토 3: 사용자 확인 못 함(사용자 메뉴 못 찾음)이면 손님일 수도 있어서 local만 ("확인 실패 시 아무것도 지우지 않음"의 취지)
+      //   → sync 개인 항목이 그대로 남으니 화면의 숨김·색·일정·옵션 메모리도 그대로 둔다
+      const { who } = await realMods;
+      const syncToo = !userGuest && userKnown;
       const local = await chrome.storage.local.get(null);
-      await chrome.storage.local.remove(Object.keys(local));
-      const sync = await chrome.storage.sync.get(null);
-      await chrome.storage.sync.remove(Object.keys(sync).filter((k) => /^(hide|color|ev|opt)\|/.test(k)));
-      hidden = {};
-      opts = {};
-      events = {};
-      courseColors = {};
+      await chrome.storage.local.remove(Object.keys(local).filter((k) => !who.WIPE_KEEP.includes(k))); // 사용자 표시·주인 후보(sync에 못 쓴 주인 표시)는 남김
+      if (syncToo) {
+        const sync = await chrome.storage.sync.get(null);
+        await chrome.storage.sync.remove(Object.keys(sync).filter((k) => who.SYNC_RE.test(k)));
+      }
+      if (syncToo || userGuest) {
+        hidden = {};
+        opts = {};
+        events = {};
+        courseColors = {};
+        clearTimeout(flushTimer);
+        flushTimer = null;
+        pending.set = {};
+        pending.remove = new Set();
+      }
       details = {};
       classified.clear();
       week = eclass = programs = mine = academic = null;
-      clearTimeout(flushTimer);
-      flushTimer = null;
-      pending.set = {};
-      pending.remove = new Set();
       settingsNote.textContent = "지웠어요. 학교 사이트에서 새로 불러오고 있어요.";
       // 10/23: 지운 뒤 "불러오는 중"에서 멈추지 않게 바로 다시 불러온다
       loadWeek({ force: true });

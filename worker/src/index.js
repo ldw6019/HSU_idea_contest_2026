@@ -57,8 +57,25 @@ async function sha256(text) {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// 11/7 검토(정보보안 관점): 카운터 키에 날짜가 들어 있어(ask:<날짜>:<설치번호>) 같은 키가 다시 오지 않으니
+//  만료된 줄이 지워지지 않고 "설치 번호별·날짜별 사용 횟수"가 D1에 기한 없이 쌓였음
+//  → Cron 없이, 한도를 확인하는 요청 중 낮은 확률(기본 2%)로 만료된 줄을 지운다 (하루 카운터는 2일, 분당 카운터는 1분 뒤 만료).
+//    만료된 줄은 요청이 들어올 때 낮은 확률로 정리된다 → 요청이 없으면(방학 등) 남는다. 평균 50번 요청에 한 번이라,
+//    요청이 적으면 만료 뒤 며칠~그 이상 남을 수 있음 ("이틀 뒤 지움"이라고 단정하지 말 것, 11/7 검토).
+//    지우기에 실패해도 요청은 그대로 처리 (다음 기회에 다시)
+export async function maybePrune(store, env, rand = Math.random) {
+  if (typeof store.prune !== "function" || rand() >= num(env.PRUNE_CHANCE, 0.02)) return 0;
+  try {
+    return await store.prune();
+  } catch (err) {
+    console.log(JSON.stringify({ ev: "prune_error", info: String(err?.message || err).slice(0, 160) }));
+    return 0;
+  }
+}
+
 /** 하루 한도 확인: 1인 횟수 + 전체 비용(백만분의 1달러) */
 async function checkQuota(store, env, kind, install) {
+  await maybePrune(store, env);
   const perUser = kind === "ask" ? num(env.ASK_DAILY_PER_INSTALL, 20) : num(env.CLASSIFY_DAILY_PER_INSTALL, 30);
   const capMicro = num(env.DAILY_COST_CAP_MICROUSD, 1_000_000); // 기본 하루 1달러
   if ((await store.peek(`cost:${day()}`)) >= capMicro) return { ok: false, reason: "global" };

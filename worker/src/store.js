@@ -1,6 +1,7 @@
 // 저장소: 사용량 카운터 + 비교과 분류 결과(안내문 내용으로 찾는 캐시)
 // 실제 배포는 Cloudflare D1(무료: 하루 쓰기 10만 줄). KV는 무료 쓰기가 하루 1,000회라 카운터에 맞지 않음.
 // 질문 내용·할 일 목록은 저장하지 않는다 (카운터와 공개 안내문 분류 결과만).
+// 카운터는 만료(exp)가 지나면 쓰이지 않는다(incr는 0부터 다시, peek는 0). 만료된 줄은 요청 처리 중 가끔 prune()으로 지운다 (index.js)
 
 export class D1Store {
   constructor(db) {
@@ -24,6 +25,12 @@ export class D1Store {
     const now = Math.floor(Date.now() / 1000);
     const row = await this.db.prepare(`SELECT n FROM counters WHERE k = ?1 AND exp >= ?2`).bind(k, now).first();
     return row?.n ?? 0;
+  }
+  /** 만료된 카운터 줄을 지우고 지운 줄 수를 돌려줌 (11/7: ask:<날짜>:<설치번호> 줄이 날짜마다 새로 생겨 기한 없이 쌓였음) */
+  async prune() {
+    const now = Math.floor(Date.now() / 1000);
+    const r = await this.db.prepare(`DELETE FROM counters WHERE exp < ?1`).bind(now).run();
+    return r?.meta?.changes ?? 0;
   }
   async getClassify(hash) {
     const row = await this.db.prepare(`SELECT result, model, created FROM classify WHERE hash = ?1`).bind(hash).first();
@@ -53,6 +60,12 @@ export class MemoryStore {
   async peek(k) {
     const cur = this.c.get(k);
     return cur && cur.exp >= Date.now() ? cur.n : 0;
+  }
+  async prune() {
+    const now = Date.now();
+    let n = 0;
+    for (const [k, v] of this.c) if (v.exp < now) this.c.delete(k), n++;
+    return n;
   }
   async getClassify(hash) {
     return this.cls.get(hash) || null;

@@ -47,10 +47,12 @@ export const CASES = [
   { q: "이번 주에 마감인 거 뭐 있어?", intent: ["week", "today"], include: ["t1", "t2"], exclude: ["t4", "t5"] },
   { q: "내일모레까지 들어야 하는 강의 있어?", intent: ["today", "week"], include: ["t2"] },
   { q: "수업 없는 시간에 할 만한 비교과 추천해 줘", intent: ["free", "programs"], exclude: ["o2"], anyOf: ["o1", "o3", "o4"] },
+  // 11/7: 기본 추천은 신청 마감 순으로 바꿨지만, 학생이 포인트를 직접 물으면 포인트 기준으로 답해야 함 (o5 = 70점, 기대값 그대로)
   { q: "포인트 많이 주는 비교과 뭐야?", intent: ["programs", "points", "free"], include: ["o5"] },
   { q: "졸업까지 포인트 얼마나 남았어?", intent: ["points"] },
-  // 판단 재료를 쓰는지: 꿀 = 시간당 포인트 높고 안 겹치고 자리 남은 것 (o4), 겹치는 o2 제외 (10/20)
+  // 판단 재료를 쓰는지: 꿀 = 짧고 안 겹치고 자리 남은 것 (o4), 겹치는 o2 제외 (10/20. 11/7: 시간당 포인트로 순위 매기지 않게 지침 바꿈)
   { q: "꿀 비교과 있나?", intent: ["programs", "free", "points"], first: "o4", exclude: ["o2"] },
+  // 11/7: 포인트를 직접 물은 경우라 ptsPerHour를 써도 됨 (o4 = 1.5시간·시간당 10점, 기대값 그대로)
   { q: "시간 별로 안 들고 포인트 잘 주는 거 추천해 줘", intent: ["programs", "free", "points"], include: ["o4"], exclude: ["o2", "o5"] },
   { q: "설문 안 낸 거 있어?", intent: ["programs", "today", "week"], include: ["s1"] },
   { q: "이번 주 학교 신청 기간 알려줘", intent: ["academic", "week"], include: ["a1"] },

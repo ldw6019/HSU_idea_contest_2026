@@ -152,6 +152,13 @@ function isExact(start, end) {
 // 10/30: 불러오지 못한 정보 (체험 검토: e클래스를 못 불러왔는데 "남은 강의·과제·퀴즈가 없어요"라고 답했음)
 export const MISSING = { eclass: "e클래스(강의·과제·퀴즈)", programs: "신청할 수 있는 비교과 목록", mine: "내 비교과·포인트·설문", timetable: "시간표" };
 
+// 11/7 검토(비교과·학생복지 관점): 내 비교과·안 낸 설문 제목에 상담 프로그램 이름("○○ 집단상담")이 그대로 나갔음
+//  → 상담 참여 사실은 민감하니 상담·심리 분류는 제목 대신 일반 이름으로 보낸다. 화면에는 진짜 이름 그대로 (refs는 보내지 않음)
+//  분류 칸(마이페이지 "[상담·심리지원 …]")이나 제목에 상담·심리가 있으면 상담으로 본다 (덜 가리는 것보다 더 가리는 쪽으로)
+const COUNSEL_RE = /상담|심리|정신\s*건강|마음\s*건강/;
+export const isCounselProgram = (p) => COUNSEL_RE.test(`${p?.category || ""} ${p?.title || ""}`);
+export const COUNSEL_TITLE = { mine: "상담 일정", survey: "상담 프로그램" };
+
 export function buildContext(
   { missing = [], eclassItems = [], myPrograms = null, openPrograms = [], timetable = [], myNext = {}, myEnds = {}, events = [], academic = [], pointSum = null, openInfo = {} } = {},
   now = new Date()
@@ -181,7 +188,7 @@ export function buildContext(
       // 다음 회차: 화면이 계산한 것(매주 회차 포함)을 먼저 쓴다
       const nx = myNext[p.id];
       const s = nx ? { kind: "exact", start: nx.start, end: nx.end, weekly: nx.weekly } : p.sessions.find((x) => x.kind === "exact") || p.sessions[0];
-      const entry = { id, title: cut(p.title), state: p.phase === "wait" ? "시작 대기" : "진행 중", schedule: nx?.weekly ? "weekly" : s?.kind || "open" };
+      const entry = { id, title: isCounselProgram(p) ? COUNSEL_TITLE.mine : cut(p.title), state: p.phase === "wait" ? "시작 대기" : "진행 중", schedule: nx?.weekly ? "weekly" : s?.kind || "open" };
       if (s?.kind === "exact") {
         entry.next = `${startDay(s.start)} ${hm(new Date(s.start))}-${hm(new Date(s.end))}`;
         entry.dday = startDays(s.start, now);
@@ -197,7 +204,7 @@ export function buildContext(
     });
     (myPrograms.surveys || []).slice(0, 10).forEach((p, i) => {
       const id = `s${i + 1}`;
-      ctx.surveys.push({ id, title: cut(p.title) });
+      ctx.surveys.push({ id, title: isCounselProgram(p) ? COUNSEL_TITLE.survey : cut(p.title) });
       refs.set(id, { kind: "survey", item: p });
     });
     const have = myPrograms.points?.graduation ?? myPrograms.points?.total;
@@ -346,11 +353,16 @@ function answerFor(intent, c, now) {
     };
   }
 
+  // 11/7 검토: 두 버튼 답이 "포인트 높은 순"이라 "포인트는 졸업 요건 확인용, 활동은 내용을 보고"와 반대로 보였음
+  //  → 신청 마감 가까운 순(같으면 원래 목록 순서)으로. 포인트는 줄·배지에 그대로 보여 줌
+  //  상담 프로그램은 "졸업 포인트" 답에서만 뺀다 (11/7 아침 사용자 결정: "비는 시간"에서는 상담도 포함 = 원래대로)
+  const byApplyDue = (a, b) => (a.applyDday ?? 9999) - (b.applyDday ?? 9999);
+  const notCounsel = (o) => o.category !== "consult" && !/상담/.test(o.title);
   if (intent === "free") {
-    const fit = c.openPrograms.filter((o) => o.when && !o.clashWithClass).sort((a, b) => (b.point || 0) - (a.point || 0));
+    const fit = c.openPrograms.filter((o) => o.when && !o.clashWithClass).sort(byApplyDue);
     if (!fit.length) return { text: "수업과 안 겹치고 날짜·시각이 정해진 신청 가능 비교과가 지금은 없어요.", picks: [] };
     return {
-      text: `수업과 안 겹치는 신청 가능 비교과 ${fit.length}개 중 포인트 높은 순이에요.`,
+      text: `수업과 안 겹치는 신청 가능 비교과 ${fit.length}개예요. 신청 마감 가까운 순이에요.`,
       picks: fit.slice(0, 6).map((o) => ({ id: o.id, reason: `${o.when}${o.point ? ` · ${o.point}점` : ""}` })),
       note: "시간표는 매주 같다고 보고 겹침을 확인했어요.",
     };
@@ -362,10 +374,10 @@ function answerFor(intent, c, now) {
     const sem = c.points.thisSemester;
     const semText = sem ? ` 이번 학기 인정은 ${sem.recognized}/${sem.cap}점${sem.roomLeft > 0 ? `, ${sem.roomLeft}점 더 모으면 이번 학기에 바로 인정돼요` : "으로 다 찼고, 더 모으면 다음 학기로 넘어가요"}.` : "";
     if (need === 0) return { text: `졸업 인정 포인트를 이미 다 채웠어요.${sem ? ` 이번 학기에 ${sem.earned}점 모았어요.` : ""}`, picks: [] };
-    // 11/2: 상담 프로그램은 포인트 순 추천에서 뺀다 (필요한 학생의 자리를 포인트 목적 신청이 차지하지 않게)
-    const good = c.openPrograms.filter((o) => o.point && !o.clashWithClass && o.category !== "consult" && !/상담/.test(o.title)).sort((a, b) => b.point - a.point || a.applyDday - b.applyDday);
+    // 11/2: 상담 프로그램은 포인트 답에서 뺀다 (필요한 학생의 자리를 포인트 목적 신청이 차지하지 않게)
+    const good = c.openPrograms.filter((o) => o.point && !o.clashWithClass && notCounsel(o)).sort(byApplyDue);
     return {
-      text: `졸업까지 ${need}점 남았어요.${semText}${good.length ? " 지금 신청할 수 있는 것 중 포인트 높은 순이에요." : ""}`,
+      text: `졸업까지 ${need}점 남았어요.${semText}${good.length ? " 지금 신청할 수 있는 것을 신청 마감 가까운 순으로 보여 드려요." : ""}`,
       picks: good.slice(0, 5).map((o) => ({ id: o.id, reason: null })), // 10/29: 포인트·D-day는 카드 배지에 이미 있어서 아랫줄은 일정으로
     };
   }

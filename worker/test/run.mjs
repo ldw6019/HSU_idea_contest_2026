@@ -192,5 +192,33 @@ check("프로그램 번호 형식 검사", r.status === 400);
   check("링크 문장을 지워도 항목 칩은 남음", lr.status === 200 && lr.body.picks.some((p) => p.id === "t1") && !/hansung/.test(lr.body.message));
 }
 
+// 11/7 검토: 만료된 사용 횟수 줄(ask:<날짜>:<설치번호>)을 가끔 지움 (Cron 없이 요청 처리 중)
+{
+  const { maybePrune } = await import("../src/index.js");
+  const { D1Store } = await import("../src/store.js");
+  const st = new MemoryStore();
+  st.c.set("ask:2026-10-01:aaaaaaaaaaaaaaaa1111", { n: 5, exp: Date.now() - 86400000 }); // 지난 날짜, 만료됨
+  st.c.set("rpm:ask:aaaaaaaaaaaaaaaa1111", { n: 2, exp: Date.now() - 1000 });
+  await st.incr(`ask:${new Date().toISOString().slice(0, 10)}:${INSTALL}`, 1, 2 * 86400); // 오늘 것, 살아 있음
+  check("확률에 안 걸리면 지우지 않음", (await maybePrune(st, {}, () => 0.5)) === 0 && st.c.size === 3);
+  check("걸리면 만료된 줄만 지움", (await maybePrune(st, {}, () => 0.001)) === 2 && st.c.size === 1 && (await st.peek(`ask:${new Date().toISOString().slice(0, 10)}:${INSTALL}`)) === 1);
+  // 요청 처리 중에 지움 (PRUNE_CHANCE = 1로 늘 지우게 해서 확인)
+  st.c.set("ask:2026-10-02:bbbbbbbbbbbbbbbb2222", { n: 1, exp: Date.now() - 1000 });
+  mockOut = { intent: "today", picks: [], message: "ok" };
+  const pr = await handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL }, body: JSON.stringify({ question: "요약", context }) }), { ...env, PRUNE_CHANCE: "1" }, { store: st });
+  check("요청 처리 중 만료된 줄 지움 + 답은 그대로", pr.status === 200 && !st.c.has("ask:2026-10-02:bbbbbbbbbbbbbbbb2222"));
+  // 지우기에 실패해도 요청은 처리, prune이 없는 저장소도 괜찮음
+  const flaky = new MemoryStore();
+  flaky.prune = async () => { throw new Error("d1 busy"); };
+  const fr = await handle(new Request("https://w.example/v1/ask", { method: "POST", headers: { origin: ORIGIN, "x-hsup-install": INSTALL }, body: JSON.stringify({ question: "요약", context }) }), { ...env, PRUNE_CHANCE: "1" }, { store: flaky });
+  check("지우기 실패해도 요청은 200", fr.status === 200);
+  check("prune 없는 저장소 → 건너뜀", (await maybePrune({ incr: async () => 1 }, { PRUNE_CHANCE: "1" })) === 0);
+  // D1: 만료 시각보다 작은 줄만 지우는 SQL
+  let sql = null, bound = null;
+  const fakeDb = { prepare: (q) => ((sql = q), { bind: (...a) => ((bound = a), { run: async () => ({ meta: { changes: 7 } }) }) }) };
+  const n = await new D1Store(fakeDb).prune();
+  check("D1: DELETE … WHERE exp < 지금(초)", /^DELETE FROM counters WHERE exp < \?1$/.test(sql) && Math.abs(bound[0] - Date.now() / 1000) < 5 && n === 7, sql);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
