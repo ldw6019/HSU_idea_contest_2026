@@ -812,7 +812,7 @@
         tabCard("이번 주", "남은 강의·과제·퀴즈·비교과를 마감 순으로. 출석이 어려운 강의도 미리"),
         tabCard("캘린더", "시간표 + 비교과 + 마감을 주간·월간으로. 톡방 공지 일정도 넣기"),
         tabCard("비교과", "수업·알바와 안 겹치는 것만 보기, 졸업 포인트, 안 낸 설문"),
-        tabCard("AI", "\"오늘 뭐 해야 돼?\"처럼 물으면 실제 항목으로 답해요"),
+        tabCard("AI", "\"오늘 뭐 해야 돼?\" 같은 버튼을 누르면 실제 항목으로 바로 답해요"), // 11/22 AI 끈 판: 직접 입력 대신 버튼
       ]),
       // 11/2 신입생 관점 검토: 기호·용어 뜻이 마우스를 올려야만 보였음
       step(3, "표시 읽는 법"),
@@ -821,7 +821,7 @@
         el("ul", { class: "wl-promise" }, [
           promise("학교 사이트는 읽기만 해요. 신청·제출은 하지 않아요"),
           promise("성적·연락처는 읽지 않고, 로그인 정보도 저장하지 않아요"),
-          promise("AI에는 직접 질문하거나 공지를 붙여 넣을 때만 보내요. 이름·학번·성적은 빼고, 서버는 저장하지 않아요"),
+          promise("내 정보는 우리 서버로 보내지 않아요. 계산은 모두 브라우저 안에서 해요"), // 11/22 AI 끈 판 (AI를 다시 켜면 예전 문장으로)
         ]),
         el("p", { text: "학생이 만든 프로토타입이에요 (학교 공식 서비스 아님)" }),
       ]),
@@ -3294,7 +3294,7 @@
     ]);
 
     const log = el("div", { class: "chat", role: "log", "aria-live": "polite" });
-    log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." })]));
+    log.appendChild(el("div", { class: "msg bot" }, [el("div", { class: "bubble", text: AI_ENDPOINT ? "무엇을 도와드릴까요? 아래 버튼을 누르거나 직접 물어보세요." : "무엇을 도와드릴까요? 아래 버튼을 눌러 보세요." })]));
     for (const m of chat) {
       const bubble = m.ai ? el("div", { class: "bubble ai-say" }, aiSentence(m)) : el("div", { class: `bubble${m.pending ? " pending" : ""}`, text: m.text });
       const parts = [bubble];
@@ -3364,7 +3364,9 @@
     //  11/7 검토: "최대 30일 보관한 뒤 지우고"는 사실보다 강했음(정책 위반 조사 등은 최대 2년 보관, 30일은 "안에" 지우는 원칙)
     //   → 팩트체크를 통과한 표현대로 "원칙적으로 30일 안에 … 예외는 회사 정책"
     const abroad = AI_ENDPOINT ? el("p", { class: "ai-note", text: "직접 쓴 질문과 일정 정보는 미국 AI 회사(Anthropic)로 보내져 처리돼요. 그 회사는 원칙적으로 30일 안에 지우고 학습에 쓰지 않아요(정책 위반 조사 등 예외는 회사 정책을 따라요)." }) : null;
-    content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, [presets, form, el("div", { class: "ai-foot" }, [counter, preview]), abroad].filter(Boolean))]));
+    // 11/22: AI 서버가 없으면(AI 끈 판) 직접 입력칸·보낼 내용 보기는 숨기고 추천 버튼만
+    const bottom = AI_ENDPOINT ? [presets, form, el("div", { class: "ai-foot" }, [counter, preview]), abroad] : [presets];
+    content.replaceChildren(head, el("div", { class: "frame ai-frame" }, [log, el("div", { class: "ai-bottom" }, bottom.filter(Boolean))]));
     if (scroll) log.lastElementChild?.scrollIntoView({ block: "nearest" });
   }
   // core/ai.js의 PRESETS와 같은 내용 (모듈을 불러오기 전에도 버튼을 그리려고 여기 둠)
