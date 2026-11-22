@@ -170,7 +170,7 @@
     { id: "week", label: "이번 주" },
     { id: "calendar", label: "캘린더" },
     { id: "programs", label: "비교과" },
-    { id: "ai", label: "AI" }, // 예전 "알림" 탭. 알림은 각 탭의 빨간 점·색으로 충분해서 AI 탭으로 바꿈 (10/14)
+    { id: "ai", label: "바로 답" }, // 예전 "알림" 탭 → AI 탭(10/14) → 11/22 AI 끈 판에서 "바로 답"(AI를 다시 켜면 "AI"로)
   ];
 
   // 디자인: 10/20 시안 A(또렷하게) 선택 — 지금 구조 그대로, 머리줄 로고·그라데이션, 둥근 탭 밑줄, e클래스 바탕 회색
@@ -812,7 +812,7 @@
         tabCard("이번 주", "남은 강의·과제·퀴즈·비교과를 마감 순으로. 출석이 어려운 강의도 미리"),
         tabCard("캘린더", "시간표 + 비교과 + 마감을 주간·월간으로. 톡방 공지 일정도 넣기"),
         tabCard("비교과", "수업·알바와 안 겹치는 것만 보기, 졸업 포인트, 안 낸 설문"),
-        tabCard("AI", "\"오늘 뭐 해야 돼?\" 같은 버튼을 누르면 실제 항목으로 바로 답해요"), // 11/22 AI 끈 판: 직접 입력 대신 버튼
+        tabCard("바로 답", "\"오늘 뭐 해야 돼?\" 같은 버튼을 누르면 실제 항목으로 바로 답해요"), // 11/22 AI 끈 판: 직접 입력 대신 버튼
       ]),
       // 11/2 신입생 관점 검토: 기호·용어 뜻이 마우스를 올려야만 보였음
       step(3, "표시 읽는 법"),
@@ -3289,8 +3289,9 @@
     if (current !== "ai") return;
     const loadingAny = eclassLoading || programsLoading || mineLoading || loading;
     const head = el("div", { class: "ai-head" }, [
-      el("div", { class: "ai-title" }, [el("strong", { text: "HSU Plus AI" }), el("span", { class: `ai-mode${AI_ENDPOINT ? (aiState === "down" ? " down" : " on") : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: !AI_ENDPOINT ? "기본 답변 모드" : aiState === "ok" ? "AI 연결됨" : aiState === "down" ? "AI 연결 안 됨" : "AI 켜짐" })]),
-      el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : "수업·과제·비교과 일정만 도와드려요." }),
+      el("div", { class: "ai-title" }, [el("strong", { text: AI_ENDPOINT ? "HSU Plus AI" : "바로 답" }), AI_ENDPOINT && el("span", { class: `ai-mode${AI_ENDPOINT ? (aiState === "down" ? " down" : " on") : ""}`, title: AI_ENDPOINT ? "직접 쓴 질문은 AI가 답해요. 아래 버튼은 바로 나오는 기본 답변이에요." : null, text: !AI_ENDPOINT ? "기본 답변 모드" : aiState === "ok" ? "AI 연결됨" : aiState === "down" ? "AI 연결 안 됨" : "AI 켜짐" })]),
+      // 11/22: AI를 뺀 이유를 한 줄로 (사용자: 대회 본선 진출 실패 뒤 비용 우려로 버튼만)
+      el("div", { class: "ai-sub", text: loadingAny ? "정보를 불러오는 중이에요…" : AI_ENDPOINT ? "수업·과제·비교과 일정만 도와드려요." : "대회가 끝난 뒤 AI 서버 비용 부담으로 질문 기능은 빼고, 자주 묻는 질문만 버튼으로 바로 답해요." }),
     ]);
 
     const log = el("div", { class: "chat", role: "log", "aria-live": "polite" });

@@ -149,7 +149,7 @@ await R.locator(".tcard", { hasText: progName }).scrollIntoViewIfNeeded();
 await R.locator("section.panel").screenshot({ path: resolve(root, "tools/shots/e2e-mine.png") });
 
 // AI 탭: 보내는 곳(미국 AI 회사)과 보관 기간을 한 줄로 알림 (11/7)
-await tab("AI");
+await tab("바로 답");
 await page.waitForTimeout(300);
 check("AI 탭: 국외(Anthropic) 처리·보관 기간 안내", /미국 AI 회사\(Anthropic\)/.test(await R.locator(".ai-bottom").innerText()) && /30일/.test(await R.locator(".ai-bottom").innerText()));
 
@@ -221,7 +221,7 @@ const calNow = async () => {
   return calWeeks();
 };
 const aiJson = async () => {
-  await tab("AI");
+  await tab("바로 답");
   await page.waitForTimeout(300);
   await R.locator(".ai-preview > summary").click();
   await page.waitForTimeout(300);
